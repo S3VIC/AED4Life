@@ -1,2 +1,7 @@
 # ignore JetBrains IDE config files 
 .idea/
+
+# Local database credentials
+.env
+.env.*
+!.env.example

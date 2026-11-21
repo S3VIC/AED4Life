@@ -1,0 +1,32 @@
+name: aed4life
+
+services:
+  mariadb:
+    image: mariadb:12.3.3
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: aed4life
+      MARIADB_USER: aed4life
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?Set MARIADB_PASSWORD in .env}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Set MARIADB_ROOT_PASSWORD in .env}
+      MARIADB_ROOT_HOST: localhost
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - type: bind
+        source: database
+        target: /docker-entrypoint-initdb.d
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    stop_grace_period: 30s
+
+volumes:
+  mariadb_data:
