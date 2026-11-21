@@ -1,7 +1,8 @@
 ﻿namespace AED4Life.DataModel.Entities;
 
 public class AEDOwner {
-	public Int64 RegonNumber { get; set; }
+	public Int64 Id { get; set; }
+	public required String RegonNumber { get; set; }
 	
 	public Boolean IsPublic { get; set; }
 	

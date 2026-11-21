@@ -54,6 +54,22 @@ provide the complete connection string as the `ConnectionStrings__AED4Life`
 environment variable instead. Never commit passwords to `appsettings.json`.
 Code accessing the database can inject `AED4Life.DataModel.AED4LifeDbContext`.
 
+## Interactive API documentation
+
+When running in Development (the default launch profiles), open
+`https://localhost:7231/scalar` for Scalar API documentation. The OpenAPI document
+is available at `https://localhost:7231/openapi/v1.json`.
+
+All current endpoints include descriptions and response examples:
+`GET /api/aed/owners`, `POST /api/translations/profiles`, and
+`GET /weatherforecast`. The profile endpoint also includes an editable JSON
+request example and examples of `400` validation and `409` duplicate-name errors.
+Scalar generates request snippets and lets you send requests to the running app;
+POST requests create real database records, so use a new profile name for each
+successful request.
+
+Scalar and the OpenAPI document are not exposed outside Development.
+
 ## Initial schema
 
 `database\001-initial-schema.sql` creates `Cities`, `Streets`, `AEDs`, and
@@ -73,13 +89,123 @@ rows, but it does not migrate or repair pre-existing tables. Future model change
 need matching schema changes; the application does not automatically call
 `EnsureCreated` or apply migrations.
 
-Entity fields are mapped as public properties. `AED`, `City`, and `Street` have
-auto-generated `Int64` IDs; `AEDOwner.RegonNumber` is a caller-supplied primary
-key. Both `AED` and `AEDOwner` reference cities and streets using `Int64` foreign
+Entity fields are mapped as public properties. `AED`, `City`, `Street`, and
+`AEDOwner` have auto-generated `Int64` IDs. `AEDOwner.RegonNumber` is a required,
+unique string of at most 14 characters, preserving leading zeros. The owner
+endpoint returns REGON as a JSON string and includes the owner's `id`, but does
+not expose city or street IDs.
+Both `AED` and `AEDOwner` reference cities and streets using `Int64` foreign
 keys, with deletion restricted while referenced. No AED-to-owner relationship
-has been invented. Strings remain required and use `LONGTEXT` because the
-entities do not specify length limits; timestamps are supplied by application
+has been invented. Strings other than REGON remain required and use `LONGTEXT`
+because the entities do not specify length limits; timestamps are supplied by application
 code, with microsecond database precision.
+
+## Fill empty tables
+
+Start the database, then run this command from Windows PowerShell in the project
+directory:
+
+```powershell
+.\scripts\Initialize-Database.ps1
+```
+
+The script uses the running Compose container and its environment credentials;
+it does not read or print passwords. Optional `-Distribution` and `-ProjectName`
+parameters select another WSL distribution or Compose project.
+
+It creates missing tables, applies `003-unique-owner-regon.sql`,
+`004-translation-profiles.sql`, and `005-aed-availability.sql`, then executes
+`002-populate-tables.sql`.
+Each sample-data table receives rows only when completely
+empty; partially populated tables are left unchanged. Sample owners and AEDs
+use actual existing city/street IDs in ascending order, cycling through available
+locations if there are fewer than the original samples. Their locations are
+demonstration data, not verified addresses.
+
+Population runs in one transaction. Repeating the script does not add rows to
+nonempty tables. The upgrade also supports the original numeric REGON primary
+key by adding an owner ID and converting REGON to a string. Existing duplicate
+REGONs or values longer than 14 characters cause the upgrade to fail rather than
+silently delete or truncate data; resolve those values and rerun. Schema upgrades
+are separate from the seed transaction.
+
+On an empty Docker volume, MariaDB runs all SQL files in filename order.
+
+## Translation profiles
+
+`POST /api/translations/profiles` creates a named mapping using `Transporter` and
+its ordered `TransporterUnits` array:
+
+```json
+{
+  "name": "Owner import",
+  "transporter": {
+    "transporterUnits": [
+      {
+        "fromColumn": "owner_name",
+        "fromType": "STRING",
+        "toColumn": "Name",
+        "toType": "STRING"
+      },
+      {
+        "fromColumn": "regon",
+        "fromType": "STRING",
+        "toColumn": "RegonNumber",
+        "toType": "STRING"
+      }
+    ]
+  }
+}
+```
+
+The endpoint returns `201` with the generated `id`, normalized `name`, and
+`transporter`. Names are trimmed, limited to 255 characters, and unique under
+the database's case-insensitive collation; duplicate names return `409`.
+Invalid requests return `400`: a name, at least one unit, nonblank source and
+destination columns, and both variable types are required. Supported types are
+`INTEGER`, `DOUBLE`, `STRING`, and `BOOLEAN` (or their defined numeric enum values).
+
+Profiles and all their units are inserted atomically. Unit positions preserve
+array order. `TranslationProfiles` and `TranslationProfileUnits` are defined in
+`database\004-translation-profiles.sql`; units reference their profile with
+cascading deletion. This endpoint stores mapping configuration; it does not
+execute translations.
+
+For an existing database, or to apply only the translation tables, run the
+following in Ubuntu WSL from the project directory:
+
+```sh
+docker compose exec -T mariadb sh -c 'MYSQL_PWD="$MARIADB_PASSWORD" exec mariadb --user="$MARIADB_USER" "$MARIADB_DATABASE"' < database/004-translation-profiles.sql
+```
+
+This script is safe to rerun and does not populate or modify existing AED data.
+
+## AED access, hours, and rating
+
+The `AED` entity and `AEDs` table include:
+
+| Field | Values |
+| --- | --- |
+| `Access` | `AEDAccess.Open` (0), `Emergency` (1), `Private` (2), or `NULL` for unknown |
+| `AvailabilityStartHour` | Whole hour, 0-23, or `NULL` |
+| `AvailabilityEndHour` | Whole hour, 0-24, or `NULL` |
+| `Rating` | `AEDRating.MissingData` (0, default) or `Fine` (1) |
+
+Availability hours must either both be unknown (`NULL`) or both be supplied.
+Equal hours are invalid. `0` to `24` means all-day availability; overnight ranges
+such as `22` to `6` are allowed. Enums are stored as checked integers and serialize
+to their names when used in JSON.
+
+The initial schema and sample AED rows include these fields. For an existing
+database, run this from Ubuntu WSL in the project directory:
+
+```sh
+docker compose exec -T mariadb sh -c 'MYSQL_PWD="$MARIADB_PASSWORD" exec mariadb --user="$MARIADB_USER" "$MARIADB_DATABASE"' < database/005-aed-availability.sql
+```
+
+The upgrade is safe to rerun. Existing AEDs retain their original data and gain
+unknown access/hours plus `MissingData` rating; no access or availability is
+inferred from existing rows.
 
 ## Persistent storage
 

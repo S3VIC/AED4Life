@@ -5,10 +5,15 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AED4Life.Endpoints;
 
-public static class AEDEndpoints {
-	public static RouteGroupBuilder MapAEDEndpoints(this IEndpointRouteBuilder endpoints) {
+public static class AedEndpoints {
+	public static RouteGroupBuilder MapAedEndpoints(this IEndpointRouteBuilder endpoints) {
 		RouteGroupBuilder group = endpoints.MapGroup("/api/aed").WithTags("AED");
-		group.MapGet("/owners", GetOwnersAsync).WithName("GetAEDOwners");
+		group.MapGet("/owners", GetOwnersAsync)
+			.WithName("GetAEDOwners")
+			.WithSummary("Get AED owners with address details")
+			.WithDescription("Returns all owners joined with their city and street, ordered by REGON. "
+				+ "Includes the city name, postal code, and street name without exposing location IDs. "
+				+ "Returns an empty array when no owners exist. No request body is required.");
 		return group;
 	}
 

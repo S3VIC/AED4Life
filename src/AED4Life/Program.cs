@@ -1,6 +1,9 @@
 using AED4Life.DataModel;
+using AED4Life.Documentation;
 using AED4Life.Endpoints;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi;
+using Scalar.AspNetCore;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -15,18 +18,30 @@ builder.Services.AddDbContext<AED4LifeDbContext>(options =>
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options => {
+	options.AddDocumentTransformer((document, context, cancellationToken) => {
+		document.Info = new OpenApiInfo {
+			Title = "AED4Life API",
+			Version = "v1",
+			Description = "AED owner lookup and reusable translation profile configuration. Includes a sample weather endpoint."
+		};
+		return Task.CompletedTask;
+	});
+	options.AddOperationTransformer<ApiDocumentationTransformer>();
+});
 
 WebApplication app = builder.Build();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment()) {
 	app.MapOpenApi();
+	app.MapScalarApiReference(options => options.WithTitle("AED4Life API"));
 }
 
 app.UseHttpsRedirection();
 
-app.MapAEDEndpoints();
+app.MapAedEndpoints();
+app.MapTranslationEndpoints();
 
 String[] summaries = new[] {
 	"Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
@@ -44,7 +59,11 @@ app.MapGet("/weatherforecast", () => {
 		];
 		return forecast;
 	})
-	.WithName("GetWeatherForecast");
+	.WithName("GetWeatherForecast")
+	.WithTags("Weather")
+	.WithSummary("Get sample weather forecasts")
+	.WithDescription("Returns five randomly generated daily forecasts with Celsius and calculated Fahrenheit temperatures. "
+		+ "This demonstration endpoint does not access the database. No request body is required.");
 
 app.Run();
 
