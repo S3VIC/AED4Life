@@ -5,3 +5,7 @@
 .env
 .env.*
 !.env.example
+
+# artifacts folders
+**/obj
+**/bin

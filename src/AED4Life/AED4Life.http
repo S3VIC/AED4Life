@@ -1,0 +1,6 @@
+@AED4Life_HostAddress = http://localhost:5259
+
+GET {{AED4Life_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
