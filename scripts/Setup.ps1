@@ -50,12 +50,15 @@ function Initialize-DockerMode {
 }
 
 function Invoke-Compose([String[]] $Arguments, [String] $Stdin) {
+    # Stdin must be piped directly into the native command; a piped script block does not forward it.
+    $hasStdin = $PSBoundParameters.ContainsKey('Stdin')
     if ($script:UseWsl) {
-        $command = { & wsl.exe --distribution $Distribution --cd $root --exec docker compose --project-name $ProjectName @Arguments }
+        if ($hasStdin) { $Stdin | & wsl.exe --distribution $Distribution --cd $root --exec docker compose --project-name $ProjectName @Arguments }
+        else { & wsl.exe --distribution $Distribution --cd $root --exec docker compose --project-name $ProjectName @Arguments }
     } else {
-        $command = { & docker compose --project-name $ProjectName --project-directory $root @Arguments }
+        if ($hasStdin) { $Stdin | & docker compose --project-name $ProjectName --project-directory $root @Arguments }
+        else { & docker compose --project-name $ProjectName --project-directory $root @Arguments }
     }
-    if ($PSBoundParameters.ContainsKey('Stdin')) { $Stdin | & $command } else { & $command }
     if ($LASTEXITCODE -ne 0) { throw "docker compose $($Arguments -join ' ') failed (exit code $LASTEXITCODE)." }
 }
 

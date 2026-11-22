@@ -1,5 +1,6 @@
 using AED4Life.DataModel;
 using AED4Life.DataModel.DTOs;
+using AED4Life.DataModel.Entities;
 using AED4Life.DataModel.Enums;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,21 @@ public static class AedEndpoints {
 			.WithDescription("Returns all owners joined with their city and street, ordered by REGON. "
 				+ "Includes nullable city and street names without exposing location IDs; owners with unknown locations are included. "
 				+ "Returns an empty array when no owners exist. No request body is required.");
+		group.MapGet("", GetAllAsync)
+			.WithName("GetAllAEDs")
+			.WithSummary("Get all AEDs")
+			.WithDescription("Returns every AED ordered by ID with coordinates, owner and address details, access, availability hours, DataRating and LastUpdated. "
+				+ "Unknown values are returned as null; devices without coordinates are included. Returns an empty array when no AEDs exist.");
+		group.MapGet("/valid", GetAllValidAsync)
+			.WithName("GetAllValidAEDs")
+			.WithSummary("Get all AEDs with valid (complete) data")
+			.WithDescription("Returns only AEDs whose DataRating is Fine, i.e. coordinates, a complete address, access and both availability hours are known. "
+				+ "Same shape and ordering as GET /api/aed. Returns an empty array when none qualify.");
+		group.MapGet("/statistics", GetStatisticsAsync)
+			.WithName("GetAEDStatistics")
+			.WithSummary("Get data verification statistics")
+			.WithDescription("Returns total, valid (DataRating Fine), missingData (DataRating MissingData) and unknown (DataRating null) AED counts, "
+				+ "and validPercentage = valid / total * 100 rounded to two decimals (0 when there are no AEDs).");
 		group.MapGet("/nearest", GetNearestAsync)
 			.WithName("GetNearestAvailableAED")
 			.WithSummary("Find the nearest available AED")
@@ -36,6 +52,44 @@ public static class AedEndpoints {
 				+ "Uses the same access and Europe/Warsaw opening-hour rules as /api/aed/nearest. "
 				+ "Unknown owner/address metadata is omitted. Returns an empty array when no candidate exists.");
 		return group;
+	}
+
+	private static async Task<Ok<List<AEDDetailsResponse>>> GetAllAsync(AED4LifeDbContext database, CancellationToken cancellationToken) =>
+		TypedResults.Ok(await QueryDetails(database, false).ToListAsync(cancellationToken));
+
+	private static async Task<Ok<List<AEDDetailsResponse>>> GetAllValidAsync(AED4LifeDbContext database, CancellationToken cancellationToken) =>
+		TypedResults.Ok(await QueryDetails(database, true).ToListAsync(cancellationToken));
+
+	private static async Task<Ok<AEDStatisticsResponse>> GetStatisticsAsync(AED4LifeDbContext database, CancellationToken cancellationToken) {
+		Int32 total = await database.AEDs.CountAsync(cancellationToken);
+		Int32 valid = await database.AEDs.CountAsync(aed => aed.DataRating == AEDRating.Fine, cancellationToken);
+		Int32 missing = await database.AEDs.CountAsync(aed => aed.DataRating == AEDRating.MissingData, cancellationToken);
+		Double percentage = total == 0 ? 0 : Math.Round(100.0 * valid / total, 2);
+		return TypedResults.Ok(new AEDStatisticsResponse(total, valid, missing, total - valid - missing, percentage));
+	}
+
+	private static IQueryable<AEDDetailsResponse> QueryDetails(AED4LifeDbContext database, Boolean validOnly) {
+		IQueryable<AED> aeds = database.AEDs.AsNoTracking();
+		if (validOnly) {
+			aeds = aeds.Where(aed => aed.DataRating == AEDRating.Fine);
+		}
+		return
+			from aed in aeds.OrderBy(aed => aed.Id)
+			join owner in database.AEDOwners on aed.OwnerId equals owner.Id into owners
+			from owner in owners.DefaultIfEmpty()
+			join address in database.Addresses on aed.AddressId equals address.Id into addresses
+			from address in addresses.DefaultIfEmpty()
+			join city in database.Cities on address.CityId equals city.Id into cities
+			from city in cities.DefaultIfEmpty()
+			join street in database.Streets on address.StreetId equals street.Id into streets
+			from street in streets.DefaultIfEmpty()
+			join postalCode in database.PostalCodes on address.PostalCodeId equals postalCode.Id into postalCodes
+			from postalCode in postalCodes.DefaultIfEmpty()
+			select new AEDDetailsResponse(aed.Id, aed.Latitude, aed.Longitude,
+				owner == null ? null : owner.Name, city == null ? null : city.Name,
+				street == null ? null : street.Name, postalCode == null ? null : postalCode.Code,
+				address == null ? null : address.BuildingNumber,
+				aed.Access, aed.AvailabilityStartHour, aed.AvailabilityEndHour, aed.DataRating, aed.LastUpdated);
 	}
 
 	private static async Task<Results<Ok<NearestAEDResponse>, ValidationProblem, ProblemHttpResult>> GetNearestAsync(

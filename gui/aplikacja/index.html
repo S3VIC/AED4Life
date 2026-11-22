@@ -57,7 +57,7 @@ button:disabled{opacity:.45;cursor:default}
 .seg{display:flex;gap:4px;background:var(--sf2);border:1px solid var(--line);border-radius:14px;padding:4px;overflow-x:auto;margin:18px 0}
 .seg button{border:0;background:none;min-height:44px;color:var(--mute);white-space:nowrap;flex:none}.seg button.on{background:var(--sf);color:var(--ink);box-shadow:var(--sh)}
 label{display:block;font-weight:600;margin-bottom:6px;font-size:16px}.req{color:var(--red)}
-input[type=text],input[type=email],input[type=tel],select,textarea{font:inherit;font-size:17px;color:var(--ink);background:var(--sf);border:1px solid light-dark(#c9ccd6,#3a3f4b);border-radius:12px;padding:11px 14px;min-height:50px;width:100%}
+input[type=text],input[type=email],input[type=tel],input[type=password],select,textarea{font:inherit;font-size:17px;color:var(--ink);background:var(--sf);border:1px solid light-dark(#c9ccd6,#3a3f4b);border-radius:12px;padding:11px 14px;min-height:50px;width:100%}
 textarea{min-height:120px;font-family:ui-monospace,monospace;font-size:14px}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}.grid2 .full{grid-column:1/-1}@media(max-width:620px){.grid2{grid-template-columns:minmax(0,1fr)}}
 .fsec{background:var(--sf);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}.fsec h3{margin-bottom:14px}
@@ -1189,12 +1189,14 @@ svg.leaflet-image-layer.leaflet-interactive path {
   <div class="seg" role="tablist" aria-label="Sekcje panelu">
     <button role="tab" aria-selected="true" aria-controls="p-queue" id="t-queue" class="on">Do weryfikacji</button>
     <button role="tab" aria-selected="false" aria-controls="p-cov" id="t-cov">Weryfikacja danych</button>
+    <button role="tab" aria-selected="false" aria-controls="p-mgmt" id="t-mgmt">Zgłoszenia i użytkownicy</button>
     <button role="tab" aria-selected="false" aria-controls="p-prov" id="t-prov">Dostawcy</button>
     <button role="tab" aria-selected="false" aria-controls="p-csv" id="t-csv">Import danych</button>
     <button role="tab" aria-selected="false" aria-controls="p-form" id="t-form">Dodaj AED</button>
   </div>
   <div id="p-queue" role="tabpanel" aria-labelledby="t-queue"><p class="note">Usuwaj tylko AED zdemontowane. Przy wątpliwościach wybierz „Do sprawdzenia”: rekord zostaje na mapie z ostrzeżeniem.</p><div class="stackc" id="queue"></div></div>
-  <div id="p-cov" role="tabpanel" aria-labelledby="t-cov" hidden><p class="note">Odsetek AED o zweryfikowanych danych w całym zbiorze i w miastach (od najniższego).</p><div class="stackc" id="cov"></div></div>
+  <div id="p-cov" role="tabpanel" aria-labelledby="t-cov" hidden><p class="note">Odsetek AED z kompletnymi danymi (współrzędne, pełny adres, dostęp, godziny) wśród wszystkich AED w bazie.</p><div class="stackc" id="cov"></div></div>
+  <div id="p-mgmt" role="tabpanel" aria-labelledby="t-mgmt" hidden><p class="note">Zgłoszenia mieszkańców z WebAPI. Akceptacja zapisuje dane w bazie AED i przelicza ocenę kompletności; odrzucenie niczego nie zmienia.</p><div class="stackc" id="mgmt"></div></div>
   <div id="p-prov" role="tabpanel" aria-labelledby="t-prov" hidden><p class="note">Zbiory dostawców w dane.gov.pl, z których powstaje krajowa lista. Dane przykładowe.</p><div class="provs" id="provsAdmin"></div></div>
   <div id="p-csv" role="tabpanel" aria-labelledby="t-csv" hidden>
     <div class="fsec"><h3>Plik od dysponenta</h3><p class="note" style="margin-top:-8px">CSV w układzie wzorcowego schematu. Przecinek lub średnik, UTF-8.</p>
@@ -1598,14 +1600,17 @@ const REPORT_USER_ID=window.AED4LIFE_USER_ID||1;
 function repHours(tryb,godz){if(tryb==='24/7')return{s:0,e:24};
   const m=/(\d{1,2})(?::\d{2})?\s*[-–—]\s*(\d{1,2})(?::\d{2})?/.exec(godz||'');if(!m)return{s:null,e:null};
   const s=+m[1],e=+m[2];return s>=0&&s<=23&&e>=0&&e<=24&&s!==e?{s,e}:{s:null,e:null}}
-function repMeta(tryb,godz,ai){const h=repHours(tryb,godz),kat=$('#r_kat').value;
-  const meta={userId:REPORT_USER_ID,description:$('#r_opis').value.trim(),
+function repMeta(tryb,godz,ai){const h=repHours(tryb,godz),kat=$('#r_kat').value,txt=id=>$('#'+id).value.trim()||null,nr=$('#r_nr').value.trim(),kod=txt('r_kod');
+  return{userId:AUTH?AUTH.user.id:REPORT_USER_ID,description:$('#r_opis').value.trim(),
     availabilityStartHour:h.s,availabilityEndHour:h.e,
     isPubliclyAccessible:kat==='publiczny'?true:kat==='nieznany'?null:false,
-    rating:ai&&Number.isFinite(+ai.wynik)?Math.max(0,Math.min(100,Math.round(+ai.wynik))):null};
-  return meta}
+    rating:ai&&Number.isFinite(+ai.wynik)?Math.max(0,Math.min(100,Math.round(+ai.wynik))):null,
+    reporterLatitude:+(+repGps.la).toFixed(6),reporterLongitude:+(+repGps.lo).toFixed(6),
+    latitude:repPos.la,longitude:repPos.lo,
+    cityName:txt('r_miasto'),streetName:txt('r_ulica'),postalCode:kod&&kod.length<=6?kod:null,
+    buildingNumber:/^\d{1,9}$/.test(nr)?+nr:null}}
 function repProblem(j,status){const er=j&&j.errors?Object.values(j.errors).flat().join('; '):'';return er||(j&&(j.title||j.detail))||('błąd '+status)}
-$('#repForm').onsubmit=async e=>{e.preventDefault();const miss=[];if(!repFile)miss.push('zdjęcie AED');else if(!repGps)miss.push('lokalizacja zdjęcia (zezwól na lokalizację i zrób zdjęcie ponownie)');if(!$('#r_opis').value.trim())miss.push('gdzie dokładnie wisi AED');if($('#r_godzTryb').value==='godziny'&&!$('#r_godz').value.trim())miss.push('godziny dostępności');
+$('#repForm').onsubmit=async e=>{e.preventDefault();if(!AUTH){loginOpen('zglaszajacy');$('#repOut').innerHTML='<ul class="iss"><li class="blad"><b>Zaloguj się,</b> aby wysłać zgłoszenie.</li></ul>';return}const miss=[];if(!repFile)miss.push('zdjęcie AED');else if(!repGps)miss.push('lokalizacja zdjęcia (zezwól na lokalizację i zrób zdjęcie ponownie)');if(!$('#r_opis').value.trim())miss.push('gdzie dokładnie wisi AED');if($('#r_godzTryb').value==='godziny'&&!$('#r_godz').value.trim())miss.push('godziny dostępności');
   if(!miss.length&&dist(repGps,repPos)>150)miss.push(`zdjęcie zrobiono ${Math.round(dist(repGps,repPos))} m od wskazanego miejsca – zrób zdjęcie przy AED`);
   if(miss.length){$('#repOut').innerHTML=`<ul class="iss"><li class="blad"><b>Uzupełnij:</b> ${miss.join(', ')}.</li></ul>`;return}
   const tryb=$('#r_godzTryb').value,godz=tryb==='godziny'?$('#r_godz').value.trim():tryb;
@@ -1617,7 +1622,7 @@ $('#repForm').onsubmit=async e=>{e.preventDefault();const miss=[];if(!repFile)mi
   /* 2) żądanie JSON do WebAPI AED4Life: POST /api/zgloszenia (multipart: metadata + image); ocena AI trafia do pola rating */
   const meta=repMeta(tryb,godz,srv);
   try{const fd=new FormData();fd.append('metadata',JSON.stringify(meta));fd.append('image',repFile,repFile.name||'aed.jpg');
-    const rs=await fetch(`${API4L}/api/zgloszenia`,{method:'POST',body:fd});const j=await rs.json().catch(()=>({}));if(rs.ok)rep=j;else repErr=repProblem(j,rs.status)}catch{repErr='offline'}
+    const rs=await apiAuth('/api/zgloszenia',{method:'POST',body:fd});const j=await rs.json().catch(()=>({}));if(rs.ok)rep=j;else repErr=repProblem(j,rs.status)}catch{repErr='offline'}
   btn.disabled=false;
   if(repErr&&repErr!=='offline'){$('#repOut').innerHTML=`<ul class="iss"><li class="blad"><b>Nie przyjęto:</b> ${esc(repErr)}.</li></ul><details class="det"><summary>Wysłane żądanie (JSON)</summary><pre>${esc(JSON.stringify(meta,null,2))}</pre></details>`;return}
   const raw={nazwa_obiektu:$('#r_nazwa').value||'AED',miejscowosc:$('#r_miasto').value,kod_pocztowy:$('#r_kod').value,ulica:$('#r_ulica').value,numer_budynku:$('#r_nr').value,lat:repPos.la,lon:repPos.lo,opis_dojscia:$('#r_opis').value,calodobowo:tryb==='24/7'?'true':'',godziny_dostepu:tryb==='godziny'?godz:'',kategoria_dostepu:$('#r_kat').value,stacjonarny:'true',umiejscowienie:'inne',sposob_otwarcia:'nieznany',status_sprawnosci:'nieznany',zrodlo:'zgloszenie_mieszkanca',sposob_weryfikacji:'zdjecie',status_rekordu:'zgloszony'};
@@ -1680,7 +1685,7 @@ $('#runCsv').onclick=()=>{const rows=parseCSV($('#csvText').value.trim());if(row
   <div class="stackc">${res.map(x=>{const [t,col]=out(x);return `<div class="card"><div class="row" style="justify-content:space-between"><b>Wiersz ${x.i}: ${esc(x.r.nazwa_obiektu)||'—'}</b><span class="pill" style="color:${col};background:var(--sf2)">${t}</span></div>${x.r.opis_dojscia?`<div class="note">${esc(x.r.opis_dojscia)}</div>`:''}${issHTML(x.is)}</div>`}).join('')}</div>
   ${ok.length?`<h3 style="margin-top:20px">Plik gotowy do dane.gov.pl</h3><pre tabindex="0">${esc(toCSV(ok))}</pre><div class="row"><button id="cpOk">Kopiuj poprawiony CSV</button></div>`:''}`;
   $('#cpOk')&&($('#cpOk').onclick=e=>copy(toCSV(ok),e.target))};
-const TABS=['queue','cov','prov','csv','form'];let curTab='queue';const showTab=t=>{curTab=t;$('#t-'+t).click()};for(const t of TABS)$('#t-'+t).onclick=()=>{for(const x of TABS){const on=x===t;$('#p-'+x).hidden=!on;$('#t-'+x).setAttribute('aria-selected',on);$('#t-'+x).classList.toggle('on',on)}curTab=t;if(t==='queue')drawQueue();if(t==='cov')drawCov();if(t==='prov')$('#provsAdmin').innerHTML=provCards(true)};
+const TABS=['queue','cov','mgmt','prov','csv','form'];let curTab='queue';const showTab=t=>{curTab=t;$('#t-'+t).click()};for(const t of TABS)$('#t-'+t).onclick=()=>{for(const x of TABS){const on=x===t;$('#p-'+x).hidden=!on;$('#t-'+x).setAttribute('aria-selected',on);$('#t-'+x).classList.toggle('on',on)}curTab=t;if(t==='queue')drawQueue();if(t==='cov')drawCov();if(t==='mgmt')drawMgmt();if(t==='prov')$('#provsAdmin').innerHTML=provCards(true)};
 
 const PROVT={jst:c=>`Gmina ${c}`,sluzby_ratownicze:c=>`Straż pożarna – ${c}`,oswiata:c=>`Szkoły i uczelnie – ${c}`,ochrona_zdrowia:c=>`Placówki medyczne – ${c}`,transport:()=>'Zarządca dworców (przykład)',handel_i_uslugi:()=>'Zarządcy obiektów handlowych (przykład)'};
 function dostOf(r){const d=[];if(r.src.includes('osm'))d.push('OpenStreetMap');if(r.src.includes('dysponent'))d.push((PROVT[r.dysponent_typ]||(()=>r.dysponent_nazwa||'Dysponent'))(r.miejscowosc));if(r.src.includes('zgloszenie_mieszkanca')||r.src.includes('potwierdzenie_qr'))d.push('Zgłoszenia mieszkańców');return [...new Set(d)]}
@@ -1733,8 +1738,11 @@ ROLES.zglaszajacy.rows=[['zglos','Zgłoś AED','plus'],['moje','Moje zgłoszenia
 ROLES.ministerstwo.hero={h:'weryfikacja',t:'',d:'Zgłoszenia czekają na Twoją decyzję',i:'check',cls:'blue'};
 ROLES.ministerstwo.rows=[['ratunek','Ratunek 112','sos','red'],['pokrycie','Weryfikacja danych','chart'],['dostawcy','Dostawcy danych','upload'],['import','Import pliku','list'],['mapa','Mapa AED','map']];
 const ALLOW={publiczny:['prowadz','uciskaj','dostepnosc','start','ratunek','rko','mapa','konto','akcja'],zglaszajacy:['prowadz','uciskaj','dostepnosc','start','ratunek','rko','mapa','konto','akcja','zglos','moje'],ministerstwo:['prowadz','uciskaj','dostepnosc','start','ratunek','rko','mapa','konto','akcja','zglos','moje','dysponent']};
-let role='publiczny';try{role=localStorage.getItem('pz_role')||role}catch{}if(!ROLES[role])role='publiczny';
-function drawNav(){$('#tabs').innerHTML=ROLES[role].nav.map(([h,t,i])=>`<a href="#${h}">${ic(i)}<span>${t}</span></a>`).join('');$('#who').innerHTML=`<span class="av">${ic(ROLES[role].icon)}</span><span class="nm">${role==='publiczny'?'Zaloguj się':ROLES[role].name}</span>`;$('#who').setAttribute('aria-label',role==='publiczny'?'Zaloguj się':'Konto: '+ROLES[role].name)}
+/* Sesja logowania: token Bearer z WebAPI (POST /api/login) trzymany tylko w sessionStorage. */
+let AUTH=null;try{AUTH=JSON.parse(sessionStorage.getItem('pz_auth')||'null')}catch{}
+const ROLE_OF={Admin:'ministerstwo',Maintainer:'ministerstwo',PublicRepresentative:'zglaszajacy',Normal:'zglaszajacy'};
+let role='publiczny';if(AUTH&&AUTH.user&&ROLE_OF[AUTH.user.type])role=ROLE_OF[AUTH.user.type];else AUTH=null;if(!ROLES[role])role='publiczny';
+function drawNav(){$('#tabs').innerHTML=ROLES[role].nav.map(([h,t,i])=>`<a href="#${h}">${ic(i)}<span>${t}</span></a>`).join('');$('#who').innerHTML=`<span class="av">${ic(ROLES[role].icon)}</span><span class="nm">${role==='publiczny'?'Zaloguj się':(AUTH?esc(AUTH.user.username):ROLES[role].name)}</span>`;$('#who').setAttribute('aria-label',role==='publiczny'?'Zaloguj się':'Konto: '+ROLES[role].name)}
 let entered=false;function drawStart(){const R=ROLES[role];{const lv=live(AED);$('#fact').textContent=`W rejestrze ${lv.length} defibrylatorów, ${lv.filter(r=>r.status_rekordu==='zweryfikowany').length} sprawdzonych w ostatnim roku. Dane przykładowe.`}$('#hello').textContent={publiczny:'Pomoc przy zatrzymaniu krążenia',zglaszajacy:'Cześć, Ania',ministerstwo:'Panel koordynatora'}[role];const H={...R.hero};if(role==='ministerstwo'){const n=live(AED).filter(r=>['zgloszony','wymaga_sprawdzenia'].includes(r.status_rekordu)).length;H.t=n?`${n} zgłoszeń do sprawdzenia`:'Wszystko sprawdzone';}
   $('#hero').innerHTML=`<a class="hero ${H.cls||''}" href="#${H.h}"><span class="hic">${ic(H.i)}</span><span><b>${H.t}</b><span class="s">${H.d}</span></span><span class="chev">${ic('chev')}</span></a>`;
   $('#rows').innerHTML=R.rows.map(([h,t,i,cls,cnt])=>{const c=cnt?cnt():0;return `<a class="rowi ${cls||''}" href="#${h}"><span class="ic">${ic(cls==='lock'?'lock':i)}</span><b>${t}</b>${c?`<span class="cnt">${c}</span>`:'<span></span>'}<span class="chev">${ic('chev')}</span></a>`}).join('');
@@ -1742,11 +1750,30 @@ let entered=false;function drawStart(){const R=ROLES[role];{const lv=live(AED);$
   $('#startInfo').innerHTML=info;if(!entered){entered=true;$('#hero').firstElementChild?.classList.add('enter');$('#rows').classList.add('enter2')}}
 function drawRoles(){$('#roles').innerHTML=Object.entries(ROLES).map(([k,v])=>`<button class="role" data-role="${k}" aria-pressed="${k===role}"><span class="ic">${ic(v.icon)}</span><b>${v.name}</b><span>${v.desc}</span><ul>${v.can.map(c=>`<li>${c}</li>`).join('')}</ul><span class="btn ${k===role?'':'pri'}">${k===role?'Aktywny widok':(k==='publiczny'?'Kontynuuj jako gość':'Zaloguj się')}</span></button>`).join('')}
 const LOGIN={pending:null};
+const saveAuth=()=>{try{AUTH?sessionStorage.setItem('pz_auth',JSON.stringify(AUTH)):sessionStorage.removeItem('pz_auth')}catch{}};
+function logout(){AUTH=null;role='publiczny';saveAuth();drawNav()}
 function loginOpen(k){LOGIN.pending=k;$('#loginT').textContent='Logowanie – '+ROLES[k].name;$('#loginErr').textContent='';$('#lgPass').value='';try{$('#lgUser').value=localStorage.getItem('pz_user')||''}catch{}$('#loginDlg').showModal();setTimeout(()=>($('#lgUser').value?$('#lgPass'):$('#lgUser')).focus(),30)}
-$('#loginForm').onsubmit=e=>{e.preventDefault();const u=$('#lgUser').value.trim(),p=$('#lgPass').value;if(!u||!p){$('#loginErr').textContent='Podaj nazwę użytkownika i hasło.';return}
-  role=LOGIN.pending;try{localStorage.setItem('pz_role',role);localStorage.setItem('pz_user',u)}catch{}$('#lgPass').value='';$('#loginDlg').close();drawNav();$('#live').textContent='Zalogowano jako '+u+'. Widok: '+ROLES[role].name;location.hash='start'};
+async function apiAuth(path,opt={}){const h={...(opt.headers||{})};if(AUTH)h.Authorization='Bearer '+AUTH.token;const rs=await fetch(API4L+path,{...opt,headers:h});if(rs.status===401&&AUTH){logout();$('#live').textContent='Sesja wygasła. Zaloguj się ponownie.'}return rs}
+async function apiErr(rs){try{const j=await rs.json();const er=j.errors?Object.values(j.errors).flat().join('; '):'';return er||j.title||j.detail||('błąd '+rs.status)}catch{return 'błąd '+rs.status}}
+$('#loginForm').onsubmit=async e=>{e.preventDefault();const u=$('#lgUser').value.trim(),p=$('#lgPass').value,err=$('#loginErr'),btn=$('#loginForm button[type=submit]');
+  if(!u||!p){err.textContent='Podaj nazwę użytkownika i hasło.';return}
+  btn.disabled=true;err.textContent='Loguję…';
+  try{const rs=await fetch(API4L+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    if(rs.status===401){err.textContent='Nieprawidłowa nazwa użytkownika lub hasło.';return}
+    if(rs.status===429){err.textContent='Zbyt wiele prób logowania. Spróbuj za minutę.';return}
+    if(!rs.ok){err.textContent='Nie udało się zalogować: '+await apiErr(rs);return}
+    const tok=await rs.json(),me=await fetch(API4L+'/api/me',{headers:{Authorization:'Bearer '+tok.accessToken}});
+    if(!me.ok){err.textContent='Nie udało się pobrać danych konta.';return}
+    const user=await me.json();if(!ROLE_OF[user.type]){err.textContent='Typ konta nie ma dostępu do aplikacji.';return}
+    AUTH={token:tok.accessToken,user};role=ROLE_OF[user.type];saveAuth();try{localStorage.setItem('pz_user',u)}catch{}
+    $('#lgPass').value='';$('#loginDlg').close();drawNav();$('#live').textContent='Zalogowano jako '+user.username+'. Widok: '+ROLES[role].name;location.hash='start'}
+  catch{err.textContent='Brak połączenia z serwerem.'}
+  finally{btn.disabled=false;$('#lgPass').value=''}};
 $('#lgCancel').onclick=()=>{$('#lgPass').value='';$('#loginDlg').close()};
-$('#roles').onclick=e=>{const b=e.target.closest('[data-role]');if(!b)return;const k=b.dataset.role;if(k==='publiczny'||k===role){role=k;try{localStorage.setItem('pz_role',role);if(k==='publiczny')localStorage.removeItem('pz_user')}catch{}drawNav();$('#live').textContent='Widok: '+ROLES[role].name;location.hash='start';return}loginOpen(k)};
+$('#roles').onclick=e=>{const b=e.target.closest('[data-role]');if(!b)return;const k=b.dataset.role;
+  if(k==='publiczny'){logout();$('#live').textContent='Wylogowano. Widok: '+ROLES[role].name;location.hash='start';return}
+  if(AUTH&&k===role){location.hash='start';return}
+  loginOpen(k)};
 const mine=()=>AED.filter(r=>r.autor==='ja');
 function drawMoje(){const m=mine(),pts=points+m.length*20;$('#mojeLead').textContent='Zgłoszenie pojawi się w trybie ratunkowym po zatwierdzeniu przez instytucję.';
   $('#mojeKpi').innerHTML=[[m.length,'zgłoszonych AED'],[m.filter(r=>r.status_rekordu==='zweryfikowany').length,'zatwierdzonych'],[pts,'punktów']].map(([v,l])=>`<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join('');
@@ -1754,11 +1781,35 @@ function drawMoje(){const m=mine(),pts=points+m.length*20;$('#mojeLead').textCon
   $('#mojeList').innerHTML=m.length?m.map(r=>`<div class="card"><div class="row" style="justify-content:space-between"><b style="font-size:19px">${esc(r.nazwa_obiektu)}</b><span class="note">${pl(r.data_dodania_w_zrodle)}</span></div><div class="note">${esc(r.miejscowosc)} · ${esc(r.opis_dojscia)}</div>${tl(r)}</div>`).join(''):'<p class="empty">Nie masz jeszcze zgłoszeń.</p>';
 }
 document.addEventListener('click',e=>{const a=e.target.closest('[data-sel]');if(a)sel=a.dataset.sel});
-function drawCov(){const by={};let N=0,V=0;for(const r of AED){if(r.status_rekordu==='usuniety')continue;N++;if(r.status_rekordu==='zweryfikowany')V++;const c=by[r.miejscowosc]||(by[r.miejscowosc]={n:0,v:0,q:0,chk:0,z:0});c.n++;c.q+=r.wskaznik_jakosci;if(r.status_rekordu==='zweryfikowany')c.v++;if(r.status_rekordu==='wymaga_sprawdzenia')c.chk++;if(r.status_rekordu==='zgloszony')c.z++}
-  const all=N?Math.round(100*V/N):0,col=p=>p<50?'var(--red)':'var(--ok)';
-  const rows=Object.entries(by).map(([k,c])=>({k,...c,pv:Math.round(100*c.v/c.n),aq:Math.round(c.q/c.n)})).sort((a,b)=>a.pv-b.pv);
-  $('#cov').innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><b style="font-size:19px">Zweryfikowane dane o AED</b><span class="note">${V} z ${N} AED</span></div><div class="row" style="justify-content:space-between;margin-top:8px"><span>Odsetek zweryfikowanych</span><b style="font-size:28px;color:${col(all)}">${all}%</b></div><div class="bar"><i style="width:${all}%;background:${col(all)}"></i></div></div>`+
-  rows.slice(0,60).map(r=>`<div class="card"><div class="row" style="justify-content:space-between"><b style="font-size:19px">${esc(r.k)}</b><span class="note">${r.n} AED</span></div><div class="row" style="justify-content:space-between;margin-top:8px"><span>Zweryfikowane</span><b style="color:${col(r.pv)}">${r.pv}%</b></div><div class="bar"><i style="width:${r.pv}%;background:${col(r.pv)}"></i></div><div class="row" style="margin-top:10px;gap:6px">${r.z?`<span class="pill b-zgloszony">${r.z} czeka na decyzję</span>`:''}${r.chk?`<span class="pill b-wymaga_sprawdzenia">${r.chk} do sprawdzenia</span>`:''}<span class="pill b-usuniety">jakość: ${r.aq}</span></div></div>`).join('')}
+/* Panel opiekuna/administratora: zgłoszenia z WebAPI (akceptacja uzupełnia bazę AED) i awans użytkowników. */
+const rpHours=r=>r.availabilityStartHour==null||r.availabilityEndHour==null?'brak danych':(r.availabilityStartHour===0&&r.availabilityEndHour===24?'całą dobę':`${r.availabilityStartHour}:00–${r.availabilityEndHour}:00`);
+const rpCard=r=>`<div class="card"><div class="row" style="justify-content:space-between"><b>Zgłoszenie #${r.id}</b><span class="note">${esc(String(r.created).slice(0,16).replace('T',' '))}</span></div>
+  <div class="note">${esc(r.description)}</div>
+  <div class="note">${esc([r.streetName,r.buildingNumber].filter(v=>v!=null&&v!=='').join(' '))}${r.cityName?', '+esc(r.cityName):''}${r.postalCode?' '+esc(r.postalCode):''}${r.latitude!=null?` · ${(+r.latitude).toFixed(5)}, ${(+r.longitude).toFixed(5)}`:' · brak współrzędnych'}</div>
+  <div class="row" style="gap:6px;margin-top:6px"><span class="pill b-usuniety">ocena AI: ${r.rating==null?'brak':r.rating+'/100'}</span><span class="pill b-usuniety">godziny: ${rpHours(r)}</span><span class="pill b-usuniety">dostęp publiczny: ${r.isPubliclyAccessible==null?'nie wiadomo':r.isPubliclyAccessible?'tak':'nie'}</span>${r.aedId?`<span class="pill b-usuniety">AED #${r.aedId}</span>`:'<span class="pill b-zgloszony">nowy AED</span>'}</div>
+  <div class="row" style="margin-top:10px"><button class="okb" data-acc="${r.id}">Zaakceptuj</button><button class="danger" data-rej="${r.id}">Odrzuć</button></div></div>`;
+const TYPE_PL={Admin:'administrator',Maintainer:'opiekun',PublicRepresentative:'przedstawiciel',Normal:'użytkownik'};
+async function drawMgmt(msg){const box=$('#mgmt');if(!AUTH){box.innerHTML='<p class="empty">Zaloguj się jako opiekun lub administrator.</p>';return}
+  let html=msg?`<p class="note" role="status">${esc(msg)}</p>`:'';box.innerHTML=html+'<p class="note">Ładuję z WebAPI…</p>';
+  try{const rs=await apiAuth('/api/zgloszenia?status=Submitted');
+    if(rs.ok){const l=await rs.json();html+=`<h3>Zgłoszenia do akceptacji (${l.length})</h3>`+(l.length?l.map(rpCard).join(''):'<p class="empty">Brak oczekujących zgłoszeń.</p>')}
+    else html+=`<p class="note">Zgłoszenia: ${esc(await apiErr(rs))}</p>`}catch{html+='<p class="note">Brak połączenia z WebAPI.</p>'}
+  if(AUTH&&AUTH.user.type==='Admin'){try{const rs=await apiAuth('/api/users');
+    if(rs.ok){const u=await rs.json();html+=`<h3>Użytkownicy</h3>`+u.map(x=>`<div class="card row" style="justify-content:space-between"><span><b>${esc(x.username)}</b><br><span class="note">${esc(x.firstName)} ${esc(x.lastName)} · ${TYPE_PL[x.type]||esc(x.type)}</span></span>${x.type==='Normal'||x.type==='PublicRepresentative'?`<button data-promote="${x.id}">Awansuj na opiekuna</button>`:''}</div>`).join('')}
+    else html+=`<p class="note">Użytkownicy: ${esc(await apiErr(rs))}</p>`}catch{html+='<p class="note">Brak połączenia z WebAPI.</p>'}}
+  else html+='<p class="note">Awansowanie użytkowników na opiekunów jest dostępne tylko dla administratora.</p>';
+  $('#mgmt').innerHTML=html}
+$('#mgmt').addEventListener('click',async e=>{const b=e.target.closest('[data-acc],[data-rej],[data-promote]');if(!b)return;
+  const [kind,id]=b.dataset.acc?['accept',b.dataset.acc]:b.dataset.rej?['reject',b.dataset.rej]:['promote',b.dataset.promote];b.disabled=true;
+  try{const rs=await apiAuth(kind==='promote'?`/api/users/${id}/promote`:`/api/zgloszenia/${id}/${kind}`,{method:'POST'});
+    if(rs.ok){const j=await rs.json();drawMgmt(kind==='accept'?`Zgłoszenie #${id} zaakceptowane – dane AED #${j.aedId} zaktualizowane.`:kind==='reject'?`Zgłoszenie #${id} odrzucone.`:`${j.username} jest teraz opiekunem.`)}
+    else drawMgmt('Nie udało się: '+await apiErr(rs))}catch{drawMgmt('Brak połączenia z WebAPI.')}});
+/* Statystyka: odsetek AED z kompletnymi danymi (DataRating = Fine) wśród wszystkich AED w bazie. */
+async function drawCov(){const box=$('#cov');box.innerHTML='<p class="note">Ładuję statystyki z WebAPI…</p>';
+  try{const rs=await fetch(API4L+'/api/aed/statistics',{cache:'no-store'});if(!rs.ok)throw 0;const s=await rs.json(),p=s.validPercentage,col=p<50?'var(--red)':'var(--ok)';
+    box.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><b style="font-size:19px">Zweryfikowane dane o AED</b><span class="note">${s.valid} z ${s.total} AED</span></div><div class="row" style="justify-content:space-between;margin-top:8px"><span>Odsetek poprawnych danych</span><b style="font-size:28px;color:${col}">${p.toLocaleString('pl',{maximumFractionDigits:2})}%</b></div><div class="bar"><i style="width:${Math.min(100,p)}%;background:${col}"></i></div>
+      <div class="row" style="margin-top:10px;gap:6px"><span class="pill b-zweryfikowany">kompletne: ${s.valid}</span><span class="pill b-wymaga_sprawdzenia">braki danych: ${s.missingData}</span><span class="pill b-usuniety">nieocenione: ${s.unknown}</span></div></div>`}
+  catch{box.innerHTML='<p class="note">Nie udało się pobrać statystyk z WebAPI.</p>'}}
 const VIEWS=['prowadz','start','ratunek','uciskaj','dostepnosc','rko','konto','moje','locked','mapa','zglos','dysponent','dane','akcja'],NAVMAP={prowadz:'start',ratunek:'start',akcja:'start',konto:'start',locked:'start'},TABHASH={weryfikacja:'queue',pokrycie:'cov',dostawcy:'prov',import:'csv',dodaj:'form'};
 let lastView='';function route(){let h=location.hash.slice(1);let gid=null;if(h.startsWith('prowadz')){gid=h.slice(8)||null;h='prowadz'}if(h==='ratunek')h='prowadz';if(h.startsWith('potwierdz-')){const id=h.slice(10);location.hash='mapa';if(AED.some(a=>a.id_aed===id)){detail(id);$('#qrBtn').click()}return}
   let tab=null;if(TABHASH[h]){tab=TABHASH[h];h='dysponent'}if(!VIEWS.includes(h))h=ROLES[role].start;

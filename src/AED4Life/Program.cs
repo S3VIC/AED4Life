@@ -4,7 +4,11 @@ using AED4Life.Documentation;
 using AED4Life.Endpoints;
 using AED4Life.Storage;
 using AED4Life.Translation;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication.BearerToken;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using Scalar.AspNetCore;
@@ -23,6 +27,16 @@ builder.Services.AddScoped<TranslationEngine>();
 builder.Services.AddSingleton<ReportImageStorage>();
 builder.Services.Configure<PasswordHasherOptions>(options => options.IterationCount = 210_000);
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+builder.Services.AddAuthentication(BearerTokenDefaults.AuthenticationScheme)
+	.AddBearerToken(options => options.BearerTokenExpiration = TimeSpan.FromHours(8));
+builder.Services.AddAuthorization();
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+builder.Services.AddRateLimiter(options => {
+	options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+	options.AddPolicy(AuthEndpoints.LoginRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+		context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+		_ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+});
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -46,11 +60,17 @@ if (app.Environment.IsDevelopment()) {
 	app.MapScalarApiReference(options => options.WithTitle("AED4Life API"));
 }
 
+app.UseForwardedHeaders(new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto });
 app.UseHttpsRedirection();
+app.UseCors();
+app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapAedEndpoints();
 app.MapTranslationEndpoints();
 app.MapReportEndpoints();
+app.MapAuthEndpoints();
 
 String[] summaries = new[] {
 	"Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
