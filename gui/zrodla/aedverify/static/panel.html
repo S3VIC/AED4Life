@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kolejka weryfikacji AED</title>
+<style>
+body{margin:0;font:16px/1.4 system-ui,sans-serif;background:#f6f7f8;color:#14181c}
+main{max-width:1100px;margin:0 auto;padding:16px}
+.row{display:grid;grid-template-columns:220px 1fr auto;gap:16px;background:#fff;border-radius:12px;padding:14px;margin:0 0 12px;box-shadow:0 1px 3px #0002}
+.row img{width:220px;height:160px;object-fit:cover;border-radius:8px;background:#ddd}
+.row ul{margin:6px 0;padding-left:18px;color:#4a535c;font-size:.92rem}
+.acts{display:flex;flex-direction:column;gap:6px;min-width:170px}
+button{min-height:42px;border-radius:8px;border:2px solid #c3c9cf;background:#fff;font:600 .95rem system-ui;cursor:pointer}
+button.ok{background:#00843D;color:#fff;border-color:#00843D}
+button:focus-visible{outline:3px solid #1b4fd6;outline-offset:2px}
+.tag{display:inline-block;padding:2px 8px;border-radius:99px;background:#eee;font-size:.85rem}
+@media(max-width:700px){.row{grid-template-columns:1fr}.row img{width:100%}}
+</style>
+</head>
+<body>
+<main>
+<h1>Kolejka weryfikacji</h1>
+<p><a href="/api/eksport.csv">Eksport CSV</a> · <a href="/api/eksport.json">Eksport JSON</a></p>
+<div id="q" aria-live="polite">Ładuję…</div>
+</main>
+<script>
+(() => {
+  const API = window.AED_API || '/api';
+  const tok = new URLSearchParams(location.search).get('token') || '';
+  const H = tok ? { Authorization: 'Bearer ' + tok } : {};
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const img = async (el, f) => {
+    if (!f) return;
+    const r = await fetch(`${API}/zdjecie/${f}`, { headers: H });
+    if (r.ok) el.src = URL.createObjectURL(await r.blob());
+  };
+  const load = async () => {
+    const r = await fetch(`${API}/kolejka`, { headers: H });
+    if (!r.ok) { q.textContent = 'Brak dostępu (dodaj ?token=…)'; return; }
+    const d = await r.json();
+    q.innerHTML = d.length ? '' : '<p>Kolejka pusta.</p>';
+    for (const w of d) {
+      const el = document.createElement('article');
+      el.className = 'row';
+      const osm = `https://www.openstreetmap.org/?mlat=${w.aed_lat}&mlon=${w.aed_lon}#map=19/${w.aed_lat}/${w.aed_lon}`;
+      el.innerHTML = `<img alt="Zdjęcie zgłoszenia AED ${esc(w.nazwa)}">
+        <div><h2 style="font-size:1.05rem;margin:0">${esc(w.nazwa)} ${w.typ==='zgloszenie'?'<span class="tag" style="background:#ffe9a8">nowy AED</span> ':''}<span class="tag">${esc(w.werdykt.replace(/_/g,' '))}</span> <span class="tag">${w.wynik}/100</span></h2>
+        <p style="margin:4px 0">${w.odleglosc_m ?? '?'} m od pozycji w bazie · GPS ±${Math.round(w.accuracy)} m · ${new Date(w.ts).toLocaleString('pl-PL')} · <a href="${osm}" target="_blank" rel="noopener">mapa</a></p>
+        <ul>${w.raport.powody.map(p => `<li>${esc(p)}</li>`).join('')}</ul></div>
+        <div class="acts"><button class="ok" data-d="potwierdzony">${w.typ==='zgloszenie'?'Zatwierdź nowy AED':'Potwierdź'}</button>
+        ${w.werdykt === 'korekta_lokalizacji' ? '<button data-d="korekta">Popraw położenie</button>' : ''}
+        ${w.werdykt === 'brak_aed' ? '<button data-d="prawdopodobnie_brak">AED usunięty</button>' : ''}
+        <button data-d="odrzucony">Odrzuć</button></div>`;
+      img(el.querySelector('img'), w.plik);
+      el.querySelector('.acts').onclick = async e => {
+        const b = e.target.closest('button'); if (!b) return;
+        await fetch(`${API}/kolejka/${w.id}`, { method: 'POST', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ decyzja: b.dataset.d }) });
+        el.remove();
+      };
+      q.append(el);
+    }
+  };
+  const q = document.getElementById('q');
+  load();
+})();
+</script>
+</body>
+</html>

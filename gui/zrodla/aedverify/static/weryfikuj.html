@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Potwierdź AED – Punkt Życia</title>
+<style>
+:root{--g:#00843D;--gd:#006830;--r:#C8102E;--y:#8a5a00;--bg:#f6f7f8;--t:#14181c;--m:#4a535c}
+*{box-sizing:border-box}
+body{margin:0;font:17px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--t)}
+main{max-width:520px;margin:0 auto;padding:16px}
+h1{font-size:1.4rem;margin:.2em 0 .6em}
+.card{background:#fff;border-radius:14px;padding:16px;margin:0 0 14px;box-shadow:0 1px 3px #0002}
+.gps{display:flex;gap:10px;align-items:center;font-size:.95rem;color:var(--m)}
+.dot{width:12px;height:12px;border-radius:50%;background:#aaa;flex:none}
+.dot.ok{background:var(--g)}.dot.mid{background:#d99a00}.dot.bad{background:var(--r)}
+ul.list{list-style:none;margin:0;padding:0}
+ul.list li{margin:0 0 8px}
+.aed{width:100%;text-align:left;display:flex;justify-content:space-between;gap:10px;padding:12px 14px;border:2px solid #d5d9dd;border-radius:12px;background:#fff;font:inherit;cursor:pointer;color:inherit}
+.aed[aria-pressed=true]{border-color:var(--g);background:#eef8f2}
+.aed small{color:var(--m)}
+.btn{display:block;width:100%;min-height:52px;border:0;border-radius:12px;font:600 1.05rem system-ui;cursor:pointer;margin:8px 0 0}
+.btn.p{background:var(--g);color:#fff}.btn.p:hover{background:var(--gd)}
+.btn.s{background:#fff;color:var(--t);border:2px solid #c3c9cf}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn:focus-visible,.aed:focus-visible{outline:3px solid #1b4fd6;outline-offset:2px}
+img.prev{width:100%;border-radius:12px;margin-top:10px;max-height:46vh;object-fit:cover}
+.res{border-left:6px solid #aaa}
+.res.ok{border-color:var(--g)}.res.mid{border-color:#d99a00}.res.bad{border-color:var(--r)}
+.res h2{margin:0 0 6px;font-size:1.15rem}
+.res ul{margin:6px 0 0;padding-left:20px;color:var(--m)}
+.hint{color:var(--m);font-size:.9rem}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+<main>
+<h1>Potwierdź defibrylator</h1>
+<div class="card">
+  <p class="gps" role="status" aria-live="polite"><span class="dot" id="dot" aria-hidden="true"></span><span id="gpsTxt">Ustalam lokalizację…</span></p>
+  <p class="hint">Stań przy AED i zrób zdjęcie szafki z widocznym zielonym znakiem. Lokalizację zapisujemy tylko w chwili zdjęcia, a dane EXIF usuwamy przed zapisem.</p>
+</div>
+<section class="card" aria-labelledby="h-list">
+  <h2 id="h-list" style="font-size:1.05rem;margin:0 0 10px">Który AED potwierdzasz?</h2>
+  <ul class="list" id="list"><li class="hint">Czekam na GPS…</li></ul>
+</section>
+<section class="card">
+  <input type="file" id="file" accept="image/*" capture="environment" class="sr" aria-label="Zdjęcie AED">
+  <button class="btn p" id="shot" disabled>📷 Zrób zdjęcie AED</button>
+  <img id="prev" class="prev" alt="Podgląd zdjęcia AED" hidden>
+  <button class="btn p" id="send" hidden>Wyślij potwierdzenie</button>
+  <button class="btn s" id="none" disabled>Nie ma tu AED</button>
+</section>
+<section class="card res" id="res" hidden aria-live="polite"></section>
+</main>
+<script src="foto.js"></script>
+<script>
+(() => {
+  const API = window.AED_API || '/api';
+  const $ = id => document.getElementById(id);
+  const gps = new AedFoto.GpsTracker();
+  let aeds = [], sel = new URLSearchParams(location.search).get('id'), plik = null, gpsAtShot = null, loaded = false;
+
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const renderList = () => {
+    const g = gps.best;
+    $('list').innerHTML = aeds.length ? aeds.map(a => {
+      const d = g ? Math.round(AedFoto.dist(g.lat, g.lon, a.lat, a.lon)) : a.odleglosc_m;
+      return `<li><button class="aed" aria-pressed="${a.id === sel}" data-id="${esc(a.id)}"><span>${esc(a.nazwa)}<br><small>${esc(a.status.replace(/_/g, ' '))}</small></span><strong>${d} m</strong></button></li>`;
+    }).join('') : '<li class="hint">Brak AED w pobliżu w bazie.</li>';
+    const ok = !!sel;
+    $('shot').disabled = !ok; $('none').disabled = !ok;
+  };
+  $('list').addEventListener('click', e => {
+    const b = e.target.closest('.aed'); if (!b) return;
+    sel = b.dataset.id; renderList();
+  });
+
+  const load = async g => {
+    try {
+      const r = await fetch(`${API}/aed/najblizsze?lat=${g.lat}&lon=${g.lon}&n=6`);
+      aeds = await r.json();
+      if (!sel && aeds[0] && aeds[0].odleglosc_m < 80) sel = aeds[0].id;
+      loaded = true; renderList();
+    } catch { $('list').innerHTML = '<li class="hint">Brak połączenia z serwerem.</li>'; }
+  };
+
+  gps.start((g, err) => {
+    if (!g) { $('gpsTxt').textContent = err; $('dot').className = 'dot bad'; return; }
+    const a = Math.round(g.accuracy);
+    $('dot').className = 'dot ' + (a <= 20 ? 'ok' : a <= 50 ? 'mid' : 'bad');
+    $('gpsTxt').textContent = a <= 50 ? `Lokalizacja OK (±${a} m)` : `Słaby sygnał GPS (±${a} m) – wyjdź bliżej okna lub na zewnątrz`;
+    if (!loaded) load(g); else renderList();
+  });
+
+  $('shot').onclick = () => $('file').click();
+  $('file').onchange = () => {
+    plik = $('file').files[0]; if (!plik) return;
+    gpsAtShot = gps.fresh();
+    $('prev').src = URL.createObjectURL(plik); $('prev').hidden = false;
+    $('send').hidden = false; $('send').focus();
+  };
+
+  const show = (j, err) => {
+    const box = $('res'); box.hidden = false;
+    if (err) { box.className = 'card res bad'; box.innerHTML = `<h2>Nie wysłano</h2><p>${esc(err)}</p>`; return; }
+    const m = {
+      potwierdzony_auto: ['ok', 'Dziękujemy! AED potwierdzony'],
+      korekta_lokalizacji: ['mid', 'Dziękujemy! Zaproponowano korektę położenia'],
+      do_sprawdzenia: ['mid', 'Przyjęte – sprawdzi to człowiek'],
+      brak_aed: ['mid', 'Zgłoszenie braku AED przyjęte'],
+      odrzucony: ['bad', 'Nie możemy przyjąć tego zdjęcia']
+    }[j.werdykt] || ['mid', j.werdykt];
+    box.className = 'card res ' + m[0];
+    box.innerHTML = `<h2>${m[1]}</h2><p>Status AED: <strong>${esc(j.status_aed?.status?.replace(/_/g, ' '))}</strong> · wynik ${j.wynik}/100</p><ul>${(j.powody || []).map(p => `<li>${esc(p)}</li>`).join('')}</ul>`;
+    box.tabIndex = -1; box.focus();
+  };
+
+  const send = async typ => {
+    const g = typ === 'jest' ? (gpsAtShot || gps.fresh()) : gps.fresh();
+    if (!g) return show(null, 'Brak aktualnej lokalizacji. Włącz GPS i spróbuj ponownie.');
+    $('send').disabled = $('none').disabled = true;
+    try { show(await AedFoto.wyslij(`${API}/weryfikacje`, { aedId: sel, typ, plik: typ === 'jest' ? plik : null, gps: g })); }
+    catch (e) { show(null, e.message); }
+    finally { $('send').disabled = $('none').disabled = false; }
+  };
+  $('send').onclick = () => send('jest');
+  $('none').onclick = () => send('nie_ma');
+})();
+</script>
+</body>
+</html>

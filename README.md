@@ -61,7 +61,7 @@ When running in Development (the default launch profiles), open
 is available at `https://localhost:7231/openapi/v1.json`.
 
 All current endpoints include descriptions and response examples:
-`GET /api/aed/owners`, `GET /api/aed/nearest`, `GET /api/translations/profiles`,
+`GET /api/aed/owners`, `GET /api/aed/nearest`, `GET /api/aed/nearest({count})`, `GET /api/translations/profiles`,
 `GET /api/translations/profiles({name})`, `POST /api/translations/profiles`,
 `POST /api/translations/profiles({name})/import`, and
 `GET /weatherforecast`. The profile endpoint also includes an editable JSON
@@ -107,13 +107,77 @@ identify a single postal code.
 `AED.AddressId` references `Addresses`; each address contains `CityId`,
 `StreetId`, `PostalCodeId`, and an integer `BuildingNumber`. All these foreign
 keys restrict deletion while referenced. `AED.OwnerId` optionally references
-`AEDOwners`, also with restricted deletion. Business-data fields, including names, serial numbers, address parts,
+`AEDOwners`, also with restricted deletion. AED/location/owner business-data fields, including names, serial numbers, address parts,
 foreign keys, public flags, and ratings, are nullable. City/street names, owner
 names, and serial numbers use `LONGTEXT`; timestamps are supplied by application
 code, with microsecond database precision.
 Generated IDs and operational timestamps remain nonnullable, as do translation
 profile names and mapping definitions. The owner endpoint includes owners whose
 city or street is unknown and returns unknown fields as JSON `null`.
+
+## Users and AED reports
+
+`Users` contains an auto-generated `Int64` `Id`, a required unique `Username`
+(up to 255 characters), required `FirstName`, `LastName`, `BirthDate` (`DATE`,
+mapped to `DateOnly`), required residence `AddressId` referencing `Addresses`,
+and required `Type`. Types are stored as integers: `Admin=0`, `Normal=1`,
+`PublicRepresentative=2`, `Maintainer=3`. New C# users default to `Normal`;
+SQL inserts must specify the type. Usernames follow the database's
+case-insensitive collation.
+
+`PasswordHash` is required (`VARCHAR(512)`, nonempty) and excluded from JSON.
+Store only the output of the registered `IPasswordHasher<User>`, never a
+plaintext password or reversible encryption. It uses ASP.NET Core Identity V3
+PBKDF2-HMAC-SHA512 with 210,000 iterations and a separate random salt per hash;
+the format includes the version, algorithm, iteration count, salt, and subkey.
+The framework password hasher is registered for future registration/login
+handlers; those endpoints are not implemented yet.
+
+Before saving a newly registered user, hash the password supplied in a separate
+registration request DTO:
+
+```csharp
+user.PasswordHash = passwordHasher.HashPassword(user, providedPassword);
+```
+
+Verify passwords using `VerifyHashedPassword(user, user.PasswordHash, providedPassword)`,
+not string comparison or by hashing again. Treat `Failed` as a failed login;
+when verification returns `SuccessRehashNeeded`, generate and save a new hash.
+Never return password hashes in API responses or log plaintext passwords.
+
+`010-user-password-hash.sql` upgrades existing databases. If any existing user
+lacks a hash, initialization **stops** with an explicit error. The upgrade
+leaves a temporary nullable `PasswordHash` column so an operator can provision
+each user's hash through trusted code using the application password hasher.
+Rerun initialization after provisioning all users; it enforces `NOT NULL` and
+rejects empty hashes without modifying supplied hashes. Do not assign a shared
+default password or use SQL `MD5`/`SHA` functions for password storage.
+Initialization creates a bootstrap `admin` account (`Type=Admin`) whenever
+that username is absent, even when other users already exist. Its dummy profile
+is Jan Kowalski, born 1980-01-01, linked to the first existing address.
+The requested initial password is stored only as an Identity V3 hash. This is
+a publicly known, weak bootstrap credential: change it before exposing the app.
+An existing `admin` account is never overwritten, including its password,
+profile, and type. Other demo users have hashes of discarded random passwords.
+Registration/login endpoints are still not implemented by this seed.
+
+`AEDReports` contains an auto-generated `Int64` `Id`, required author `UserId`
+referencing `Users`, optional `AEDId` referencing `AEDs`, optional `PhotoUrl`
+(a URL or file path, not image bytes), required `Created` and `LastUpdated`
+timestamps, and required `Status`: `Submitted=0`, `UnderReview=1`,
+`Confirmed=2`, `Rejected=3`. A report may concern an AED not yet in the database.
+Photo storage/upload is not implemented; example photo paths are placeholders.
+As with AED timestamps, application code supplies and updates report timestamps
+in UTC, with microsecond database precision.
+
+Foreign keys restrict deletion of referenced users, AEDs, and residence
+addresses. SQL checks reject undefined user types and report statuses. These
+tables and their EF entities do not add authentication, authorization, or
+user/report endpoints.
+
+For an existing database, run either initializer below to apply
+`009-users-and-aed-reports.sql` and `010-user-password-hash.sql`, then seed empty tables without replacing
+existing records.
 
 ## Fill empty tables
 
@@ -140,24 +204,29 @@ directory by providing its path.
 
 Both scripts create missing tables, apply `003-unique-owner-regon.sql`,
 `004-translation-profiles.sql`, `005-aed-availability.sql`,
-`006-aed-coordinates.sql`, `007-nullable-import-data.sql`, and
-`008-aed-owner.sql`, then execute
+`006-aed-coordinates.sql`, `007-nullable-import-data.sql`,
+`008-aed-owner.sql`, `009-users-and-aed-reports.sql`, and
+`010-user-password-hash.sql`, then execute
 `002-populate-tables.sql`.
-Each location/AED/owner sample-data table receives rows only when completely
-empty; partially populated tables are left unchanged. Sample addresses use
+Each location/AED/owner/user/report sample-data table receives rows only when completely
+empty; partially populated tables are left unchanged except that a missing
+bootstrap `admin` user is added. Sample addresses use
 actual existing city/street/postal-code IDs in ascending order, cycling through
 available lookup rows. AEDs similarly use actual address and owner IDs, and owners use
 actual city/street IDs. Seeded ownership associations and locations are
 demonstration data, not verified addresses.
 
 An empty database receives six cities, four streets, six postal codes, six
-addresses, five owners, and six AEDs. `004` also seeds two sample translation
+addresses, five owners, six AEDs, four users, and four reports. Sample users
+cover all four types, and sample reports cover all four statuses, including
+a report without an AED reference. `004` also seeds two sample translation
 profiles with nine ordered units only when there are no profiles; existing
 profiles and their units are preserved.
 
-Location/AED/owner population and translation-profile population each run in
+Location/AED/owner/user/report population and translation-profile population each run in
 their own transaction. Repeating the script does not add rows to
-nonempty tables. The REGON upgrade supports the original numeric REGON primary
+nonempty tables, apart from creating a missing bootstrap `admin` account.
+The REGON upgrade supports the original numeric REGON primary
 key by adding an owner ID and converting REGON to a string. Existing duplicate
 REGONs or values longer than 14 characters cause the upgrade to fail rather than
 silently delete or truncate data; resolve those values and rerun. Schema upgrades
@@ -420,6 +489,19 @@ Unknown or blank owner/address text, and unknown building numbers, are omitted
 from the response. An AED without an owner or address still returns its ID and
 coordinates. Invalid query coordinates return `400`; no eligible AED returns
 `404`.
+
+To request multiple nearest available AEDs, pass a positive 32-bit integer in
+parentheses in the route (not as a query parameter):
+
+```powershell
+curl.exe "https://localhost:7231/api/aed/nearest(5)?latitude=52.229676&longitude=21.012229"
+```
+
+This returns an array of up to five AEDs, closest first, using the same
+availability and metadata rules. Ties use AED ID. The limit is applied in the
+database. If fewer AEDs are available, all eligible AEDs are returned; if none
+are available, the response is `200` with `[]`. Invalid counts or coordinates
+return `400`. The existing single-AED endpoint is unchanged.
 
 For an existing database, run `.\scripts\Initialize-Database.ps1` to apply
 `008-aed-owner.sql`. Existing AEDs retain unknown ownership (`NULL`); no

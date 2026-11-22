@@ -16,15 +16,17 @@ function Assert([Boolean] $Condition, [String] $Message) {
     if (-not $Condition) { throw $Message }
 }
 
-function Invoke-TestSql([String] $Sql) {
+function Invoke-TestSql([String] $Sql, [Switch] $ExpectFailure) {
     $result = $Sql | & wsl.exe --distribution $Distribution --exec docker exec -i $container sh -c `
-        'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb --default-character-set=utf8mb4 --batch --skip-column-names --user=root checks'
-    if ($LASTEXITCODE -ne 0) { throw 'Test SQL failed.' }
+        'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb --default-character-set=utf8mb4 --batch --skip-column-names --user=root checks' 2>&1
+    if ($ExpectFailure) {
+        Assert ($LASTEXITCODE -ne 0) 'Expected SQL to fail, but it succeeded.'
+    } elseif ($LASTEXITCODE -ne 0) { throw "Test SQL failed: $($result -join "`n")" }
     return ($result -join "`n")
 }
 
 function Get-DataSnapshot {
-    return Invoke-TestSql ((@('Cities', 'Streets', 'PostalCodes', 'Addresses', 'AEDOwners', 'AEDs') |
+    return Invoke-TestSql ((@('Cities', 'Streets', 'PostalCodes', 'Addresses', 'AEDOwners', 'AEDs', 'Users', 'AEDReports') |
         ForEach-Object { "SELECT * FROM ``$_`` ORDER BY Id;" }) -join "`n")
 }
 
@@ -58,8 +60,9 @@ function Invoke-Import([String] $Name, [String] $Csv, [Int32] $ExpectedStatus = 
     }
 }
 
-function Invoke-Nearest([String] $Query, [Int32] $ExpectedStatus = 200) {
-    $response = $client.GetAsync("$base/api/aed/nearest?$Query").GetAwaiter().GetResult()
+function Invoke-Nearest([String] $Query, [Int32] $ExpectedStatus = 200, [String] $Count = '') {
+    $suffix = if ($Count -ne '') { "($Count)" } else { '' }
+    $response = $client.GetAsync("$base/api/aed/nearest${suffix}?$Query").GetAwaiter().GetResult()
     try {
         $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
         Assert ([Int32] $response.StatusCode -eq $ExpectedStatus) "Expected $ExpectedStatus, received $([Int32] $response.StatusCode): $body"
@@ -86,6 +89,107 @@ try {
     foreach ($sqlFile in Get-ChildItem (Join-Path $projectDirectory 'database') -Filter '*.sql' | Sort-Object Name) {
         Invoke-TestSql (Get-Content -LiteralPath $sqlFile.FullName -Raw -Encoding UTF8) | Out-Null
     }
+    Assert ((Invoke-TestSql 'SELECT COUNT(DISTINCT Type) FROM Users;') -eq '4') 'Sample users do not cover all user types.'
+    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM Users WHERE Username='admin' AND Type=0 AND FirstName='Jan' AND LastName='Kowalski' AND BirthDate='1980-01-01';") -eq '1') 'Fresh initialization did not create the bootstrap administrator with dummy profile data.'
+    $bootstrapHash = Invoke-TestSql "SELECT PasswordHash FROM Users WHERE Username='admin';"
+    $encoded = [Convert]::FromBase64String($bootstrapHash)
+    Assert ($encoded[0] -eq 1 -and [Net.IPAddress]::NetworkToHostOrder([BitConverter]::ToInt32($encoded, 1)) -eq 2) 'Bootstrap password is not an Identity V3 SHA512 hash.'
+    $iterations = [Net.IPAddress]::NetworkToHostOrder([BitConverter]::ToInt32($encoded, 5))
+    $saltLength = [Net.IPAddress]::NetworkToHostOrder([BitConverter]::ToInt32($encoded, 9))
+    $salt = [Byte[]] $encoded[13..(12 + $saltLength)]
+    $expectedSubkey = [Byte[]] $encoded[(13 + $saltLength)..($encoded.Length - 1)]
+    $actualSubkey = [Security.Cryptography.Rfc2898DeriveBytes]::Pbkdf2(
+        [Text.Encoding]::UTF8.GetBytes('aed'), $salt, $iterations, [Security.Cryptography.HashAlgorithmName]::SHA512, $expectedSubkey.Length)
+    Assert ([Convert]::ToBase64String($actualSubkey) -ceq [Convert]::ToBase64String($expectedSubkey)) 'Bootstrap administrator password does not match the requested credential.'
+    $seedSql = Get-Content -LiteralPath (Join-Path $projectDirectory 'database\002-populate-tables.sql') -Raw -Encoding UTF8
+    Invoke-TestSql "UPDATE Users SET Username='previous-admin', PasswordHash=(SELECT PasswordHash FROM (SELECT PasswordHash FROM Users WHERE Username='demo-normal') AS replacement) WHERE Username='admin';" | Out-Null
+    $existingUsers = Invoke-TestSql 'SELECT * FROM Users ORDER BY Id;'
+    Invoke-TestSql $seedSql | Out-Null
+    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM Users WHERE Username='admin' AND Type=0 AND FirstName='Jan' AND LastName='Kowalski';") -eq '1') 'Initialization did not add a missing administrator to a nonempty users table.'
+    Assert ((Invoke-TestSql "SELECT * FROM Users WHERE Username<>'admin' ORDER BY Id;") -ceq $existingUsers) 'Adding the bootstrap administrator modified existing users.'
+    Invoke-TestSql "DELETE FROM Users WHERE Username='admin'; UPDATE Users SET Username='admin' WHERE Username='previous-admin';" | Out-Null
+    $beforeBootstrapRerun = Get-DataSnapshot
+    Invoke-TestSql $seedSql | Out-Null
+    Assert ((Get-DataSnapshot) -ceq $beforeBootstrapRerun) 'Reinitialization overwrote existing accounts or reset the administrator password.'
+    Write-Host 'PASS: Bootstrap administrator credentials, dummy profile, insertion into nonempty users, and preservation of existing accounts/password changes.'
+    Assert ((Invoke-TestSql 'SELECT COUNT(DISTINCT Status) FROM AEDReports;') -eq '4') 'Sample reports do not cover all report statuses.'
+    $reportUpgrade = Get-Content -LiteralPath (Join-Path $projectDirectory 'database\009-users-and-aed-reports.sql') -Raw -Encoding UTF8
+    Invoke-TestSql @"
+CREATE DATABASE checks_reports_upgrade;
+CREATE TABLE checks_reports_upgrade.Addresses LIKE Addresses;
+INSERT INTO checks_reports_upgrade.Addresses SELECT * FROM Addresses;
+CREATE TABLE checks_reports_upgrade.AEDs LIKE AEDs;
+INSERT INTO checks_reports_upgrade.AEDs SELECT * FROM AEDs;
+USE checks_reports_upgrade;
+$reportUpgrade
+$reportUpgrade
+"@ | Out-Null
+    Assert ((Invoke-TestSql 'SELECT COUNT(*) FROM checks_reports_upgrade.AEDs;') -eq '6') 'Report upgrade changed existing AEDs.'
+    Assert ((Invoke-TestSql 'SELECT COUNT(*) FROM checks_reports_upgrade.Users;') -eq '0') 'Schema upgrade unexpectedly created users.'
+    $passwordUpgrade = Get-Content -LiteralPath (Join-Path $projectDirectory 'database\010-user-password-hash.sql') -Raw -Encoding UTF8
+    Invoke-TestSql @'
+INSERT INTO checks_reports_upgrade.Users SELECT * FROM Users;
+ALTER TABLE checks_reports_upgrade.Users DROP CONSTRAINT CK_Users_PasswordHash, DROP COLUMN PasswordHash;
+'@ | Out-Null
+    $failure = Invoke-TestSql ("USE checks_reports_upgrade;`n" + $passwordUpgrade) -ExpectFailure
+    Assert ($failure -like '*Provision Users.PasswordHash for every existing user*') 'Password upgrade did not explain required legacy credential provisioning.'
+    Assert ((Invoke-TestSql 'SELECT COUNT(*) FROM checks_reports_upgrade.Users WHERE PasswordHash IS NULL;') -eq '4') 'Password upgrade guessed or discarded existing credentials.'
+    Invoke-TestSql @'
+UPDATE checks_reports_upgrade.Users u JOIN checks.Users original ON u.Id=original.Id
+SET u.PasswordHash=original.PasswordHash;
+'@ | Out-Null
+    Invoke-TestSql ("USE checks_reports_upgrade;`n" + $passwordUpgrade + "`n" + $passwordUpgrade) | Out-Null
+    Assert ((Invoke-TestSql @'
+SELECT COUNT(*) FROM checks_reports_upgrade.Users u JOIN checks.Users original ON u.Id=original.Id
+WHERE u.PasswordHash=original.PasswordHash AND u.Username=original.Username AND u.BirthDate=original.BirthDate;
+'@) -eq '4') 'Password upgrade changed provisioned credentials or existing user data.'
+    $reportChecks = Invoke-TestSql @'
+START TRANSACTION;
+SET @PasswordHash=(SELECT PasswordHash FROM Users ORDER BY Id LIMIT 1);
+INSERT INTO Users (Username, FirstName, LastName, BirthDate, AddressId, Type, PasswordHash)
+SELECT 'report-check', 'Test', 'User', '1999-02-28', MIN(Id), 1, @PasswordHash FROM Addresses;
+SET @UserId=LAST_INSERT_ID();
+SET @AddressId=(SELECT AddressId FROM Users WHERE Id=@UserId);
+SET @AEDId=(SELECT MIN(Id) FROM AEDs);
+INSERT INTO AEDReports (UserId, AEDId, PhotoUrl, Created, LastUpdated, Status)
+VALUES (@UserId, NULL, NULL, '2026-01-01 10:00:00.123456', '2026-01-01 10:00:00.123456', 0),
+       (@UserId, @AEDId, '/photos/test.jpg', '2026-01-01 10:00:00.123456', '2026-01-02 11:00:00.654321', 1);
+SELECT COUNT(*) FROM AEDReports WHERE UserId=@UserId AND AEDId IS NULL AND PhotoUrl IS NULL;
+SELECT COUNT(*) FROM AEDReports WHERE UserId=@UserId AND AEDId=@AEDId AND PhotoUrl='/photos/test.jpg'
+AND MICROSECOND(Created)=123456 AND MICROSECOND(LastUpdated)=654321 AND Status=1;
+SET @Rejected=0;
+DELIMITER //
+BEGIN NOT ATOMIC
+    DECLARE CONTINUE HANDLER FOR 1048, 1062, 1451, 1452, 4025 SET @Rejected=@Rejected+1;
+    UPDATE Users SET Type=4 WHERE Id=@UserId;
+    UPDATE Users SET FirstName=NULL WHERE Id=@UserId;
+    UPDATE Users SET LastName=NULL WHERE Id=@UserId;
+    UPDATE Users SET BirthDate=NULL WHERE Id=@UserId;
+    UPDATE Users SET AddressId=NULL WHERE Id=@UserId;
+    UPDATE Users SET Username=NULL WHERE Id=@UserId;
+    UPDATE Users SET PasswordHash=NULL WHERE Id=@UserId;
+    UPDATE Users SET PasswordHash='' WHERE Id=@UserId;
+    UPDATE Users SET PasswordHash='   ' WHERE Id=@UserId;
+    UPDATE Users SET AddressId=-1 WHERE Id=@UserId;
+    INSERT INTO Users (Username, FirstName, LastName, BirthDate, AddressId, Type, PasswordHash)
+        VALUES ('REPORT-CHECK', 'Other', 'User', '2000-01-01', @AddressId, 1, @PasswordHash);
+    UPDATE AEDReports SET Status=4 WHERE UserId=@UserId;
+    UPDATE AEDReports SET UserId=NULL WHERE UserId=@UserId;
+    UPDATE AEDReports SET Created=NULL WHERE UserId=@UserId;
+    UPDATE AEDReports SET LastUpdated=NULL WHERE UserId=@UserId;
+    UPDATE AEDReports SET UserId=-1 WHERE UserId=@UserId;
+    UPDATE AEDReports SET AEDId=-1 WHERE UserId=@UserId;
+    DELETE FROM Users WHERE Id=@UserId;
+    DELETE FROM AEDs WHERE Id=@AEDId;
+    DELETE FROM Addresses WHERE Id=@AddressId;
+END//
+DELIMITER ;
+SELECT @Rejected;
+ROLLBACK;
+'@
+    Assert ($reportChecks -ceq "1`n1`n20") 'User/report constraints, optional fields, date precision, or deletion restrictions are incorrect.'
+    Write-Host 'PASS: Required password hashes, explicit legacy provisioning failure/recovery, credential preservation, and repeatable password upgrade.'
+    Write-Host 'PASS: Users/reports schema upgrade, sample types/statuses, required personal data, unique usernames, optional AED/photo, and restricted relationships.'
     $before = Get-DataSnapshot
     Invoke-TestSql @'
 ALTER TABLE Cities MODIFY COLUMN Name LONGTEXT NOT NULL;
@@ -472,11 +576,25 @@ UPDATE AEDs SET AddressId=@PartialAddress,OwnerId=@BlankOwner WHERE SerialNumber
 '@ | Out-Null
     $nearest = Invoke-Nearest 'latitude=0&longitude=0'
     Assert ($nearest.cityName -eq 'Nearest City' -and @($nearest.PSObject.Properties).Count -eq 4) 'Partial metadata or blank text was not handled correctly.'
+    $nearestMany = @(Invoke-Nearest 'latitude=0&longitude=0&count=1' -Count 2)
+    Assert ($nearestMany.Count -eq 2 -and $nearestMany[0].longitude -eq 0.0005 -and $nearestMany[1].longitude -eq 0.001) 'Nearest collection did not honor the route count or distance ordering.'
+    Assert (($nearestMany[0].PSObject.Properties.Name -join '|') -eq 'id|latitude|longitude|cityName') 'Nearest collection returned unknown metadata.'
+    Assert ($nearestMany[1].ownerName -eq 'Nearest Owner' -and $nearestMany[1].buildingNumber -eq 10) 'Nearest collection lost linked metadata.'
+    $nearestMany = @(Invoke-Nearest 'latitude=0&longitude=0' -Count 10)
+    Assert ($nearestMany.Count -eq 3 -and $nearestMany[2].longitude -eq 0.01) 'Nearest collection did not return all eligible candidates when fewer than requested exist.'
+    $nearestMany = @(Invoke-Nearest 'latitude=0&longitude=0' -Count 1)
+    Assert ($nearestMany.Count -eq 1 -and $nearestMany[0].id -eq $nearest.id) 'Nearest collection of one disagreed with the existing endpoint.'
+    foreach ($count in @('0', '-1', 'invalid', '2147483648')) {
+        Invoke-Nearest 'latitude=0&longitude=0' 400 -Count $count | Out-Null
+    }
     Invoke-TestSql 'UPDATE AEDs SET Access=2;' | Out-Null
     Invoke-Nearest 'latitude=0&longitude=0' 404 | Out-Null
+    $nearestMany = @(Invoke-Nearest 'latitude=0&longitude=0' -Count 3)
+    Assert ($nearestMany.Count -eq 0) 'An empty nearest collection did not return an empty array.'
     foreach ($query in @('latitude=91&longitude=0', 'latitude=0&longitude=-181', 'latitude=NaN&longitude=0',
         'latitude=0&longitude=Infinity', 'longitude=0', 'latitude=0&longitude=invalid')) {
         Invoke-Nearest $query 400 | Out-Null
+        Invoke-Nearest $query 400 -Count 3 | Out-Null
     }
 
     $warsawHour = [TimeZoneInfo]::ConvertTime([DateTimeOffset]::UtcNow, [TimeZoneInfo]::FindSystemTimeZoneById('Europe/Warsaw')).Hour
@@ -515,6 +633,8 @@ INSERT INTO AEDs (SerialNumber,Latitude,Longitude,Created,LastUpdated) VALUES
 '@ | Out-Null
     $nearest = Invoke-Nearest 'latitude=1&longitude=1'
     Assert ($nearest.id -eq [Int64](Invoke-TestSql "SELECT MIN(Id) FROM AEDs WHERE SerialNumber IN ('TIE-A','TIE-B');")) 'Distance ties were not resolved deterministically.'
+    $nearestMany = @(Invoke-Nearest 'latitude=1&longitude=1' -Count 2)
+    Assert ($nearestMany.Count -eq 2 -and $nearestMany[0].id -eq $nearest.id -and $nearestMany[0].id -lt $nearestMany[1].id) 'Nearest collection ties were not resolved by AED ID.'
     Write-Host 'PASS: Server-side great-circle nearest selection at the antimeridian and poles, and deterministic ties.'
 
     $spec = Invoke-RestMethod "$base/openapi/v1.json"
@@ -526,6 +646,11 @@ INSERT INTO AEDs (SerialNumber,Latitude,Longitude,Created,LastUpdated) VALUES
     Assert ($nearestOperation.parameters.Count -eq 2) 'Nearest AED query parameters are not documented.'
     $minimalExample = $nearestOperation.responses.'200'.content.'application/json'.examples.coordinatesOnly.value
     Assert (($minimalExample.PSObject.Properties.Name -join '|') -eq 'id|latitude|longitude') 'Nearest AED documentation exposes unknown metadata.'
+    $nearestManyOperation = $spec.paths.'/api/aed/nearest({count})'.get
+    Assert ($nearestManyOperation.operationId -eq 'GetNearestAvailableAEDs') 'Nearest collection endpoint is not documented.'
+    $countParameter = $nearestManyOperation.parameters | Where-Object name -eq 'count'
+    Assert ($countParameter.in -eq 'path' -and $countParameter.required) 'Nearest collection count is not a required route parameter.'
+    Assert ($nearestManyOperation.responses.'200'.content.'application/json'.schema.type -eq 'array') 'Nearest collection response is not documented as an array.'
     foreach ($status in @('200', '400', '404', '409', '415')) {
         Assert ($null -ne $operation.responses.$status) "Import response $status is missing from OpenAPI."
     }

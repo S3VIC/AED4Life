@@ -49,6 +49,24 @@ public sealed class ApiDocumentationTransformer : IOpenApiOperationTransformer {
 					};
 				break;
 
+			case "GetNearestAvailableAEDs":
+				ResponseContent(operation, "200", "Up to the requested number of available AEDs, closest first. Unknown metadata is omitted.")
+					.Examples = new Dictionary<String, IOpenApiExample> {
+						["nearest"] = Example("Nearest available AEDs", new[] {
+							new NearestAEDResponse(1, 52.229676, 21.012229, "Example operator", "Warszawa", "Example Street", "00-001", 10),
+							new NearestAEDResponse(2, 52.230000, 21.013000, null, null, null, null, null)
+						}),
+						["empty"] = Example("No available AEDs", Array.Empty<NearestAEDResponse>())
+					};
+				ResponseContent(operation, "400", "Count must be a positive 32-bit integer; coordinates must be present, finite, and in range.", "application/problem+json")
+					.Examples = new Dictionary<String, IOpenApiExample> {
+						["invalidCount"] = Example("Nonpositive count", TypedResults.ValidationProblem(
+							new Dictionary<String, String[]> {
+								["count"] = ["Count must be a positive integer."]
+							}).ProblemDetails)
+					};
+				break;
+
 			case "GetTranslationProfiles":
 			case "GetTranslationProfileByName":
 			case "CreateTranslationProfile":

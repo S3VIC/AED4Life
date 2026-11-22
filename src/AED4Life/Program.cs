@@ -1,7 +1,9 @@
 using AED4Life.DataModel;
+using AED4Life.DataModel.Entities;
 using AED4Life.Documentation;
 using AED4Life.Endpoints;
 using AED4Life.Translation;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using Scalar.AspNetCore;
@@ -17,6 +19,8 @@ if (String.IsNullOrWhiteSpace(connectionString)) {
 builder.Services.AddDbContext<AED4LifeDbContext>(options =>
 	options.UseMySql(connectionString, new MariaDbServerVersion(new Version(12, 3, 3))));
 builder.Services.AddScoped<TranslationEngine>();
+builder.Services.Configure<PasswordHasherOptions>(options => options.IterationCount = 210_000);
+builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

@@ -10,6 +10,8 @@ public sealed class AED4LifeDbContext(DbContextOptions<AED4LifeDbContext> option
 	public DbSet<Street> Streets => Set<Street>();
 	public DbSet<Address> Addresses => Set<Address>();
 	public DbSet<PostalCode> PostalCodes => Set<PostalCode>();
+	public DbSet<User> Users => Set<User>();
+	public DbSet<AEDReport> AEDReports => Set<AEDReport>();
 	public DbSet<TranslationProfile> TranslationProfiles => Set<TranslationProfile>();
 	public DbSet<TranslationProfileUnit> TranslationProfileUnits => Set<TranslationProfileUnit>();
 
@@ -86,6 +88,37 @@ public sealed class AED4LifeDbContext(DbContextOptions<AED4LifeDbContext> option
 			entity.HasOne<City>().WithMany().HasForeignKey(owner => owner.CityId)
 				.OnDelete(DeleteBehavior.Restrict);
 			entity.HasOne<Street>().WithMany().HasForeignKey(owner => owner.StreetId)
+				.OnDelete(DeleteBehavior.Restrict);
+		});
+
+		modelBuilder.Entity<User>(entity => {
+			entity.ToTable("Users", table => {
+				table.HasCheckConstraint("CK_Users_Type", "`Type` IN (0, 1, 2, 3)");
+				table.HasCheckConstraint("CK_Users_PasswordHash", "CHAR_LENGTH(TRIM(`PasswordHash`)) > 0");
+			});
+			entity.HasKey(user => user.Id);
+			entity.Property(user => user.Id).ValueGeneratedOnAdd();
+			entity.Property(user => user.Username).HasMaxLength(255);
+			entity.Property(user => user.PasswordHash).HasMaxLength(512);
+			entity.HasIndex(user => user.Username).IsUnique();
+			entity.Property(user => user.BirthDate).HasColumnType("date");
+			entity.Property(user => user.Type).HasConversion<Int32>();
+			entity.HasOne<Address>().WithMany().HasForeignKey(user => user.AddressId)
+				.OnDelete(DeleteBehavior.Restrict);
+		});
+
+		modelBuilder.Entity<AEDReport>(entity => {
+			entity.ToTable("AEDReports", table => {
+				table.HasCheckConstraint("CK_AEDReports_Status", "`Status` IN (0, 1, 2, 3)");
+			});
+			entity.HasKey(report => report.Id);
+			entity.Property(report => report.Id).ValueGeneratedOnAdd();
+			entity.Property(report => report.Created).HasColumnType("datetime(6)");
+			entity.Property(report => report.LastUpdated).HasColumnType("datetime(6)");
+			entity.Property(report => report.Status).HasConversion<Int32>();
+			entity.HasOne<User>().WithMany().HasForeignKey(report => report.UserId)
+				.OnDelete(DeleteBehavior.Restrict);
+			entity.HasOne<AED>().WithMany().HasForeignKey(report => report.AEDId)
 				.OnDelete(DeleteBehavior.Restrict);
 		});
 

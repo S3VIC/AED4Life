@@ -108,6 +108,52 @@ JOIN AddressSlots AS address ON address.Slot = MOD(sample.AddressSlot - 1, addre
 JOIN OwnerSlots AS owner ON owner.Slot = MOD(sample.AddressSlot - 1, owner.SlotCount) + 1
 WHERE NOT EXISTS (SELECT 1 FROM `AEDs`);
 
+-- Non-admin demo hashes use independent discarded random passwords.
+INSERT INTO `Users` (`Username`, `FirstName`, `LastName`, `BirthDate`, `AddressId`, `Type`, `PasswordHash`)
+WITH AddressSlots AS (
+    SELECT Id, ROW_NUMBER() OVER (ORDER BY Id) AS Slot, COUNT(*) OVER () AS SlotCount
+    FROM `Addresses`
+)
+SELECT sample.Username, sample.FirstName, sample.LastName, sample.BirthDate, address.Id, sample.Type, sample.PasswordHash
+FROM (
+    SELECT 'demo-normal' AS Username, 'Jan' AS FirstName, 'Przykladowy' AS LastName,
+        CAST('1992-08-20' AS DATE) AS BirthDate, 2 AS AddressSlot, 1 AS Type,
+        'AQAAAAIAAzRQAAAAEMujkxoxsUJ+nBVIlehmYKCk09LgR31quCrWRYLme+MOuRULgMZPb4GO1sTv3XWcFQ==' AS PasswordHash
+    UNION ALL SELECT 'demo-representative', 'Ewa', 'Testowa', CAST('1988-01-15' AS DATE), 3, 2,
+        'AQAAAAIAAzRQAAAAEPe14fPPUlm+/nh3J47l9FsiTlaTmUmvWUlWgPLQhtQ6c15MqQuBVvD7IdhOgrWapg=='
+    UNION ALL SELECT 'demo-maintainer', 'Piotr', 'Testowy', CAST('1990-11-05' AS DATE), 4, 3,
+        'AQAAAAIAAzRQAAAAEPY7jwdViPZeclUXIOcmhicCfsL8u624ZZerM6spNpdMeAbyNio7/QC1kS0gOX32sg=='
+) AS sample
+JOIN AddressSlots AS address ON address.Slot = MOD(sample.AddressSlot - 1, address.SlotCount) + 1
+WHERE NOT EXISTS (SELECT 1 FROM `Users`);
+
+INSERT INTO `Users` (`Username`, `FirstName`, `LastName`, `BirthDate`, `AddressId`, `Type`, `PasswordHash`)
+SELECT 'admin', 'Jan', 'Kowalski', CAST('1980-01-01' AS DATE), address.Id, 0,
+    'AQAAAAIAAzRQAAAAEDqeTv6SJFPVVCH30+MwSWdgdzOxo/l96knB6YAO8qUSseNzcmcysaCOdcLfFqZCyg=='
+FROM `Addresses` AS address
+WHERE NOT EXISTS (SELECT 1 FROM `Users` WHERE `Username` = 'admin')
+ORDER BY address.Id
+LIMIT 1;
+
+INSERT INTO `AEDReports` (`UserId`, `AEDId`, `PhotoUrl`, `Created`, `LastUpdated`, `Status`)
+WITH UserSlots AS (
+    SELECT Id, ROW_NUMBER() OVER (ORDER BY Id) AS Slot, COUNT(*) OVER () AS SlotCount
+    FROM `Users`
+), AEDSlots AS (
+    SELECT Id, ROW_NUMBER() OVER (ORDER BY Id) AS Slot, COUNT(*) OVER () AS SlotCount
+    FROM `AEDs`
+)
+SELECT user.Id, aed.Id, sample.PhotoUrl, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), sample.Status
+FROM (
+    SELECT 1 AS UserSlot, 1 AS AEDSlot, '/images/demo-aed.jpg' AS PhotoUrl, 0 AS Status
+    UNION ALL SELECT 2, 2, NULL, 1
+    UNION ALL SELECT 3, 3, NULL, 2
+    UNION ALL SELECT 4, NULL, NULL, 3
+) AS sample
+JOIN UserSlots AS user ON user.Slot = MOD(sample.UserSlot - 1, user.SlotCount) + 1
+LEFT JOIN AEDSlots AS aed ON aed.Slot = MOD(sample.AEDSlot - 1, aed.SlotCount) + 1
+WHERE NOT EXISTS (SELECT 1 FROM `AEDReports`);
+
 COMMIT;
 
 SELECT 'Cities' AS TableName, COUNT(*) AS RowCount FROM `Cities`
@@ -115,4 +161,6 @@ UNION ALL SELECT 'Streets', COUNT(*) FROM `Streets`
 UNION ALL SELECT 'PostalCodes', COUNT(*) FROM `PostalCodes`
 UNION ALL SELECT 'Addresses', COUNT(*) FROM `Addresses`
 UNION ALL SELECT 'AEDOwners', COUNT(*) FROM `AEDOwners`
-UNION ALL SELECT 'AEDs', COUNT(*) FROM `AEDs`;
+UNION ALL SELECT 'AEDs', COUNT(*) FROM `AEDs`
+UNION ALL SELECT 'Users', COUNT(*) FROM `Users`
+UNION ALL SELECT 'AEDReports', COUNT(*) FROM `AEDReports`;

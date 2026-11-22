@@ -27,11 +27,47 @@ public static class AedEndpoints {
 				+ "in Europe/Warsaw, with an inclusive opening hour and exclusive closing hour, including overnight ranges. "
 				+ "Distance ties select the lowest AED ID. Returns HTTP 404 when no candidate exists.")
 			.ProducesProblem(StatusCodes.Status404NotFound);
+		group.MapGet("/nearest({count})", GetNearestManyAsync)
+			.WithName("GetNearestAvailableAEDs")
+			.WithSummary("Find the requested number of nearest available AEDs")
+			.WithDescription("Provide a positive integer count in the route, for example /api/aed/nearest(5), "
+				+ "and required latitude (-90 to 90) and longitude (-180 to 180) query parameters. "
+				+ "Returns up to count available AEDs ordered by great-circle distance, then AED ID for ties. "
+				+ "Uses the same access and Europe/Warsaw opening-hour rules as /api/aed/nearest. "
+				+ "Unknown owner/address metadata is omitted. Returns an empty array when no candidate exists.");
 		return group;
 	}
 
 	private static async Task<Results<Ok<NearestAEDResponse>, ValidationProblem, ProblemHttpResult>> GetNearestAsync(
 		Double latitude, Double longitude, AED4LifeDbContext database, CancellationToken cancellationToken) {
+		Dictionary<String, String[]> errors = ValidateCoordinates(latitude, longitude);
+		if (errors.Count > 0) {
+			return TypedResults.ValidationProblem(errors);
+		}
+
+		NearestAEDResponse? nearest = await QueryNearest(database, latitude, longitude).FirstOrDefaultAsync(cancellationToken);
+		if (nearest is null) {
+			return TypedResults.Problem(statusCode: StatusCodes.Status404NotFound,
+				title: "No available AED with known coordinates was found.");
+		}
+		return TypedResults.Ok(WithKnownMetadata(nearest));
+	}
+
+	private static async Task<Results<Ok<List<NearestAEDResponse>>, ValidationProblem>> GetNearestManyAsync(
+		Int32 count, Double latitude, Double longitude, AED4LifeDbContext database, CancellationToken cancellationToken) {
+		Dictionary<String, String[]> errors = ValidateCoordinates(latitude, longitude);
+		if (count <= 0) {
+			errors["count"] = ["Count must be a positive integer."];
+		}
+		if (errors.Count > 0) {
+			return TypedResults.ValidationProblem(errors);
+		}
+
+		List<NearestAEDResponse> nearest = await QueryNearest(database, latitude, longitude).Take(count).ToListAsync(cancellationToken);
+		return TypedResults.Ok(nearest.ConvertAll(WithKnownMetadata));
+	}
+
+	private static Dictionary<String, String[]> ValidateCoordinates(Double latitude, Double longitude) {
 		Dictionary<String, String[]> errors = [];
 		if (!Double.IsFinite(latitude) || latitude is < -90 or > 90) {
 			errors["latitude"] = ["Latitude must be a finite number between -90 and 90."];
@@ -39,14 +75,14 @@ public static class AedEndpoints {
 		if (!Double.IsFinite(longitude) || longitude is < -180 or > 180) {
 			errors["longitude"] = ["Longitude must be a finite number between -180 and 180."];
 		}
-		if (errors.Count > 0) {
-			return TypedResults.ValidationProblem(errors);
-		}
+		return errors;
+	}
 
+	private static IQueryable<NearestAEDResponse> QueryNearest(AED4LifeDbContext database, Double latitude, Double longitude) {
 		Int32 hour = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, AvailabilityTimeZone).Hour;
 		const Double degreesToRadians = Math.PI / 180;
 		Double originCosine = Math.Cos(latitude * degreesToRadians);
-		NearestAEDResponse? nearest = await (
+		return
 			from aed in database.AEDs.AsNoTracking()
 			where aed.Latitude != null && aed.Longitude != null
 			where aed.Access == null || aed.Access == AEDAccess.Open || aed.Access == AEDAccess.Emergency
@@ -73,20 +109,15 @@ public static class AedEndpoints {
 			select new NearestAEDResponse(aed.Id, aed.Latitude!.Value, aed.Longitude!.Value,
 				owner == null ? null : owner.Name, city == null ? null : city.Name,
 				street == null ? null : street.Name, postalCode == null ? null : postalCode.Code,
-				address == null ? null : address.BuildingNumber)
-		).FirstOrDefaultAsync(cancellationToken);
-
-		if (nearest is null) {
-			return TypedResults.Problem(statusCode: StatusCodes.Status404NotFound,
-				title: "No available AED with known coordinates was found.");
-		}
-		return TypedResults.Ok(nearest with {
-			OwnerName = KnownText(nearest.OwnerName),
-			CityName = KnownText(nearest.CityName),
-			StreetName = KnownText(nearest.StreetName),
-			PostalCode = KnownText(nearest.PostalCode)
-		});
+				address == null ? null : address.BuildingNumber);
 	}
+
+	private static NearestAEDResponse WithKnownMetadata(NearestAEDResponse nearest) => nearest with {
+		OwnerName = KnownText(nearest.OwnerName),
+		CityName = KnownText(nearest.CityName),
+		StreetName = KnownText(nearest.StreetName),
+		PostalCode = KnownText(nearest.PostalCode)
+	};
 
 	private static String? KnownText(String? value) => String.IsNullOrWhiteSpace(value) ? null : value;
 
