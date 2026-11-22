@@ -61,7 +61,8 @@ When running in Development (the default launch profiles), open
 is available at `https://localhost:7231/openapi/v1.json`.
 
 All current endpoints include descriptions and response examples:
-`GET /api/aed/owners`, `POST /api/translations/profiles`, and
+`GET /api/aed/owners`, `GET /api/translations/profiles`,
+`GET /api/translations/profiles({name})`, `POST /api/translations/profiles`, and
 `GET /weatherforecast`. The profile endpoint also includes an editable JSON
 request example and examples of `400` validation and `409` duplicate-name errors.
 Scalar generates request snippets and lets you send requests to the running app;
@@ -72,8 +73,8 @@ Scalar and the OpenAPI document are not exposed outside Development.
 
 ## Initial schema
 
-`database\001-initial-schema.sql` creates `Cities`, `Streets`, `AEDs`, and
-`AEDOwners`. Compose mounts this directory read-only into MariaDB's startup
+`database\001-initial-schema.sql` creates `Cities`, `Streets`, `PostalCodes`,
+`Addresses`, `AEDs`, and `AEDOwners`. Compose mounts this directory read-only into MariaDB's startup
 initialization directory. MariaDB runs it automatically **only when initializing
 an empty data volume**.
 
@@ -87,17 +88,25 @@ docker compose exec -T mariadb sh -c 'MYSQL_PWD="$MARIADB_PASSWORD" exec mariadb
 The script uses `CREATE TABLE IF NOT EXISTS`: it can be rerun without deleting
 rows, but it does not migrate or repair pre-existing tables. Future model changes
 need matching schema changes; the application does not automatically call
-`EnsureCreated` or apply migrations.
+`EnsureCreated` or apply migrations. In particular, databases using the old
+`Cities.PostalCode` and `AEDs.CityId`/`StreetId`/`HouseNumber` layout require a
+separate data migration before using this version. The initialization scripts
+do not migrate that layout; do not delete a populated volume to upgrade it.
 
-Entity fields are mapped as public properties. `AED`, `City`, `Street`, and
-`AEDOwner` have auto-generated `Int64` IDs. `AEDOwner.RegonNumber` is a required,
+Entity fields are mapped as public properties. `AED`, `Address`, `City`,
+`Street`, and `AEDOwner` have auto-generated `Int64` IDs; `PostalCode` has an
+auto-generated `Int32` ID and a required `Code` of at most six characters.
+`AEDOwner.RegonNumber` is a required,
 unique string of at most 14 characters, preserving leading zeros. The owner
-endpoint returns REGON as a JSON string and includes the owner's `id`, but does
-not expose city or street IDs.
-Both `AED` and `AEDOwner` reference cities and streets using `Int64` foreign
-keys, with deletion restricted while referenced. No AED-to-owner relationship
-has been invented. Strings other than REGON remain required and use `LONGTEXT`
-because the entities do not specify length limits; timestamps are supplied by application
+endpoint returns REGON as a JSON string with the owner's name, public flag,
+city name, and street name, without exposing IDs. It no longer returns a postal
+code: owners still reference cities and streets directly, and a city does not
+identify a single postal code.
+`AED.AddressId` references `Addresses`; each address contains `CityId`,
+`StreetId`, `PostalCodeId`, and an integer `BuildingNumber`. All these foreign
+keys restrict deletion while referenced. No AED-to-owner relationship has been
+invented. City/street names, owner names, and serial numbers remain required
+`LONGTEXT`; timestamps are supplied by application
 code, with microsecond database precision.
 
 ## Fill empty tables
@@ -116,14 +125,21 @@ parameters select another WSL distribution or Compose project.
 It creates missing tables, applies `003-unique-owner-regon.sql`,
 `004-translation-profiles.sql`, and `005-aed-availability.sql`, then executes
 `002-populate-tables.sql`.
-Each sample-data table receives rows only when completely
-empty; partially populated tables are left unchanged. Sample owners and AEDs
-use actual existing city/street IDs in ascending order, cycling through available
-locations if there are fewer than the original samples. Their locations are
+Each location/AED/owner sample-data table receives rows only when completely
+empty; partially populated tables are left unchanged. Sample addresses use
+actual existing city/street/postal-code IDs in ascending order, cycling through
+available lookup rows. AEDs similarly use actual address IDs, and owners use
+actual city/street IDs. Their locations are
 demonstration data, not verified addresses.
 
-Population runs in one transaction. Repeating the script does not add rows to
-nonempty tables. The upgrade also supports the original numeric REGON primary
+An empty database receives six cities, four streets, six postal codes, six
+addresses, five owners, and six AEDs. `004` also seeds two sample translation
+profiles with six ordered units only when there are no profiles; existing
+profiles and their units are preserved.
+
+Location/AED/owner population and translation-profile population each run in
+their own transaction. Repeating the script does not add rows to
+nonempty tables. The REGON upgrade supports the original numeric REGON primary
 key by adding an owner ID and converting REGON to a string. Existing duplicate
 REGONs or values longer than 14 characters cause the upgrade to fail rather than
 silently delete or truncate data; resolve those values and rerun. Schema upgrades
@@ -132,6 +148,14 @@ are separate from the seed transaction.
 On an empty Docker volume, MariaDB runs all SQL files in filename order.
 
 ## Translation profiles
+
+`GET /api/translations/profiles` returns all profiles ordered by name, or an
+empty array if there are none. `GET /api/translations/profiles({name})` returns
+one profile using the database's case-insensitive name comparison, or a `404`
+problem response if it does not exist. URL-encode the name inside parentheses,
+for example `/api/translations/profiles(Owner%20import)`. Both GET endpoints
+return the same `id`, `name`, and `transporter` shape as POST, with mapping units
+in stored position order.
 
 `POST /api/translations/profiles` creates a named mapping using `Transporter` and
 its ordered `TransporterUnits` array:

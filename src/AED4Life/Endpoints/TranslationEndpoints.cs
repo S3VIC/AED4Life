@@ -12,6 +12,18 @@ namespace AED4Life.Endpoints;
 public static class TranslationEndpoints {
 	public static RouteGroupBuilder MapTranslationEndpoints(this IEndpointRouteBuilder endpoints) {
 		RouteGroupBuilder group = endpoints.MapGroup("/api/translations").WithTags("Translations");
+		group.MapGet("/profiles", GetProfilesAsync)
+			.WithName("GetTranslationProfiles")
+			.WithSummary("Get all translation profiles")
+			.WithDescription("Returns all profiles ordered by name, including their mapping units in stored position order. "
+				+ "Returns an empty array when no profiles exist. No request body is required.");
+		group.MapGet("/profiles({name})", GetProfileByNameAsync)
+			.WithName("GetTranslationProfileByName")
+			.WithSummary("Get a translation profile by name")
+			.WithDescription("Pass the URL-encoded profile name inside parentheses, for example profiles(Owner%20import). "
+				+ "Names are matched using the database's case-insensitive collation. "
+				+ "Returns the profile with its mapping units in stored position order, or HTTP 404 when no profile matches.")
+			.ProducesProblem(StatusCodes.Status404NotFound);
 		group.MapPost("/profiles", CreateProfileAsync)
 			.WithName("CreateTranslationProfile")
 			.WithSummary("Create a translation profile")
@@ -23,6 +35,41 @@ public static class TranslationEndpoints {
 			.ProducesProblem(StatusCodes.Status409Conflict);
 		return group;
 	}
+
+	private static async Task<Ok<List<TranslationProfileResponse>>> GetProfilesAsync(
+		AED4LifeDbContext database, CancellationToken cancellationToken) {
+		List<TranslationProfileResponse> profiles = await QueryProfiles(
+			database.TranslationProfiles.OrderBy(profile => profile.Name))
+			.ToListAsync(cancellationToken);
+
+		return TypedResults.Ok(profiles);
+	}
+
+	private static async Task<Results<Ok<TranslationProfileResponse>, ProblemHttpResult>> GetProfileByNameAsync(
+		String name, AED4LifeDbContext database, CancellationToken cancellationToken) {
+		TranslationProfileResponse? profile = await QueryProfiles(
+			database.TranslationProfiles.Where(profile => profile.Name == name))
+			.SingleOrDefaultAsync(cancellationToken);
+
+		if (profile is null) {
+			return TypedResults.Problem(
+				statusCode: StatusCodes.Status404NotFound,
+				title: "A translation profile with this name does not exist.");
+		}
+
+		return TypedResults.Ok(profile);
+	}
+
+	private static IQueryable<TranslationProfileResponse> QueryProfiles(IQueryable<TranslationProfile> profiles) =>
+		profiles.AsNoTracking().Select(profile => new TranslationProfileResponse(
+			profile.Id, profile.Name, new Transporter {
+				TransporterUnits = profile.Units.OrderBy(unit => unit.Position).Select(unit => new TransporterUnit {
+					FromColumn = unit.FromColumn,
+					FromType = unit.FromType,
+					ToColumn = unit.ToColumn,
+					ToType = unit.ToType
+				}).ToArray()
+			}));
 
 	private static async Task<Results<Created<TranslationProfileResponse>, ValidationProblem, ProblemHttpResult>> CreateProfileAsync(
 		CreateTranslationConfig request, AED4LifeDbContext database, CancellationToken cancellationToken) {

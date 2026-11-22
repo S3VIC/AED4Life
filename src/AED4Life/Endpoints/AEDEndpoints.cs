@@ -12,7 +12,7 @@ public static class AedEndpoints {
 			.WithName("GetAEDOwners")
 			.WithSummary("Get AED owners with address details")
 			.WithDescription("Returns all owners joined with their city and street, ordered by REGON. "
-				+ "Includes the city name, postal code, and street name without exposing location IDs. "
+				+ "Includes the city and street names without exposing location IDs. "
 				+ "Returns an empty array when no owners exist. No request body is required.");
 		return group;
 	}
@@ -26,7 +26,7 @@ public static class AedEndpoints {
 			orderby owner.RegonNumber
 			select new AEDOwnerResponse(
 				owner.RegonNumber, owner.IsPublic, owner.Name,
-				city.Name, city.PostalCode, street.Name)
+				city.Name, street.Name)
 		).ToListAsync(cancellationToken);
 
 		return TypedResults.Ok(owners);

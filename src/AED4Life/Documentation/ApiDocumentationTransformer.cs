@@ -17,12 +17,14 @@ public sealed class ApiDocumentationTransformer : IOpenApiOperationTransformer {
 				ResponseContent(operation, "200", "All owners with their city and street details; an empty array when none exist.")
 					.Examples = new Dictionary<String, IOpenApiExample> {
 						["owners"] = Example("Owners with joined address details", new[] {
-							new AEDOwnerResponse("001234567", true, "Example school", "Warszawa", "01-357", "Example Street")
+							new AEDOwnerResponse("001234567", true, "Example school", "Warszawa", "Example Street")
 						}),
 						["empty"] = Example("No owners exist", Array.Empty<AEDOwnerResponse>())
 					};
 				break;
 
+			case "GetTranslationProfiles":
+			case "GetTranslationProfileByName":
 			case "CreateTranslationProfile":
 				Transporter transporter = new() {
 					TransporterUnits = [
@@ -36,6 +38,28 @@ public sealed class ApiDocumentationTransformer : IOpenApiOperationTransformer {
 						}
 					]
 				};
+				TranslationProfileResponse profile = new(1, "Owner import", transporter);
+				if (operation.OperationId == "GetTranslationProfiles") {
+					ResponseContent(operation, "200", "All profiles ordered by name, with mapping units in stored position order.")
+						.Examples = new Dictionary<String, IOpenApiExample> {
+							["profiles"] = Example("Saved translation profiles", new[] { profile }),
+							["empty"] = Example("No profiles exist", Array.Empty<TranslationProfileResponse>())
+						};
+					break;
+				}
+				if (operation.OperationId == "GetTranslationProfileByName") {
+					ResponseContent(operation, "200", "The matching profile with mapping units in stored position order.")
+						.Examples = new Dictionary<String, IOpenApiExample> {
+							["profile"] = Example("Saved translation profile", profile)
+						};
+					ResponseContent(operation, "404", "No profile matches the supplied name.", "application/problem+json")
+						.Examples = new Dictionary<String, IOpenApiExample> {
+							["notFound"] = Example("Profile not found", TypedResults.Problem(
+								statusCode: StatusCodes.Status404NotFound,
+								title: "A translation profile with this name does not exist.").ProblemDetails)
+						};
+					break;
+				}
 				if (operation.RequestBody is not OpenApiRequestBody requestBody
 					|| requestBody.Content is null
 					|| !requestBody.Content.TryGetValue("application/json", out OpenApiMediaType? requestContent)) {
@@ -47,7 +71,7 @@ public sealed class ApiDocumentationTransformer : IOpenApiOperationTransformer {
 				};
 				ResponseContent(operation, "201", "Profile and all mapping units were created atomically.")
 					.Examples = new Dictionary<String, IOpenApiExample> {
-						["created"] = Example("Created translation profile", new TranslationProfileResponse(1, "Owner import", transporter))
+						["created"] = Example("Created translation profile", profile)
 					};
 				ResponseContent(operation, "400", "Invalid profile fields. Malformed JSON also returns HTTP 400.", "application/problem+json")
 					.Examples = new Dictionary<String, IOpenApiExample> {

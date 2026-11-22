@@ -21,3 +21,32 @@ CREATE TABLE IF NOT EXISTS `TranslationProfileUnits` (
     CONSTRAINT `CK_TranslationProfileUnits_FromType` CHECK (`FromType` IN (0, 1, 2, 3)),
     CONSTRAINT `CK_TranslationProfileUnits_ToType` CHECK (`ToType` IN (0, 1, 2, 3))
 ) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+START TRANSACTION;
+
+SET @SeedTranslationProfiles = NOT EXISTS (SELECT 1 FROM `TranslationProfiles`);
+
+INSERT INTO `TranslationProfiles` (`Name`)
+SELECT sample.Name
+FROM (
+    SELECT 'Sample owner import' AS Name
+    UNION ALL SELECT 'Sample address import'
+) AS sample
+WHERE @SeedTranslationProfiles;
+
+INSERT INTO `TranslationProfileUnits`
+    (`TranslationProfileId`, `Position`, `FromColumn`, `FromType`, `ToColumn`, `ToType`)
+SELECT profile.Id, sample.Position, sample.FromColumn, sample.FromType, sample.ToColumn, sample.ToType
+FROM (
+    SELECT 'Sample owner import' AS ProfileName, 0 AS Position,
+        'owner_name' AS FromColumn, 2 AS FromType, 'Name' AS ToColumn, 2 AS ToType
+    UNION ALL SELECT 'Sample owner import', 1, 'regon', 2, 'RegonNumber', 2
+    UNION ALL SELECT 'Sample address import', 0, 'city_id', 0, 'CityId', 0
+    UNION ALL SELECT 'Sample address import', 1, 'street_id', 0, 'StreetId', 0
+    UNION ALL SELECT 'Sample address import', 2, 'postal_code_id', 0, 'PostalCodeId', 0
+    UNION ALL SELECT 'Sample address import', 3, 'building_number', 0, 'BuildingNumber', 0
+) AS sample
+JOIN `TranslationProfiles` AS profile ON profile.Name = sample.ProfileName
+WHERE @SeedTranslationProfiles;
+
+COMMIT;

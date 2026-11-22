@@ -9,6 +9,8 @@ public sealed class AED4LifeDbContext(DbContextOptions<AED4LifeDbContext> option
 	public DbSet<AEDOwner> AEDOwners => Set<AEDOwner>();
 	public DbSet<City> Cities => Set<City>();
 	public DbSet<Street> Streets => Set<Street>();
+	public DbSet<Address> Addresses => Set<Address>();
+	public DbSet<PostalCode> PostalCodes => Set<PostalCode>();
 	public DbSet<TranslationProfile> TranslationProfiles => Set<TranslationProfile>();
 	public DbSet<TranslationProfileUnit> TranslationProfileUnits => Set<TranslationProfileUnit>();
 
@@ -27,6 +29,28 @@ public sealed class AED4LifeDbContext(DbContextOptions<AED4LifeDbContext> option
 			entity.Property(street => street.Id).ValueGeneratedOnAdd();
 		});
 
+		modelBuilder.Entity<PostalCode>(entity => {
+			entity.ToTable("PostalCodes");
+			entity.HasKey(postalCode => postalCode.Id);
+			entity.Property(postalCode => postalCode.Id).ValueGeneratedOnAdd();
+			entity.Property(postalCode => postalCode.Code).HasMaxLength(6);
+		});
+
+		modelBuilder.Entity<Address>(entity => {
+			entity.ToTable("Addresses");
+			entity.HasKey(address => address.Id);
+			entity.Property(address => address.Id).ValueGeneratedOnAdd();
+			entity.HasOne<City>().WithMany().HasForeignKey(address => address.CityId)
+				.OnDelete(DeleteBehavior.Restrict)
+				.HasConstraintName("FK_Address_Cities_CityId");
+			entity.HasOne<Street>().WithMany().HasForeignKey(address => address.StreetId)
+				.OnDelete(DeleteBehavior.Restrict)
+				.HasConstraintName("FK_Address_Streets_StreetId");
+			entity.HasOne<PostalCode>().WithMany().HasForeignKey(address => address.PostalCodeId)
+				.OnDelete(DeleteBehavior.Restrict)
+				.HasConstraintName("FK_Address_PostalCodes_PostalCodeId");
+		});
+
 		modelBuilder.Entity<AED>(entity => {
 			entity.ToTable("AEDs", table => {
 				table.HasCheckConstraint("CK_AEDs_Access", "`Access` IS NULL OR `Access` IN (0, 1, 2)");
@@ -43,10 +67,9 @@ public sealed class AED4LifeDbContext(DbContextOptions<AED4LifeDbContext> option
 			entity.Property(aed => aed.LastUpdated).HasColumnType("datetime(6)");
 			entity.Property(aed => aed.Access).HasConversion<Int32>();
 			entity.Property(aed => aed.Rating).HasConversion<Int32>().HasDefaultValue(AEDRating.MissingData);
-			entity.HasOne<City>().WithMany().HasForeignKey(aed => aed.CityId)
-				.OnDelete(DeleteBehavior.Restrict);
-			entity.HasOne<Street>().WithMany().HasForeignKey(aed => aed.StreetId)
-				.OnDelete(DeleteBehavior.Restrict);
+			entity.HasOne<Address>().WithMany().HasForeignKey(aed => aed.AddressId)
+				.OnDelete(DeleteBehavior.Restrict)
+				.HasConstraintName("FK_AEDs_Address_AddressId");
 		});
 
 		modelBuilder.Entity<AEDOwner>(entity => {
