@@ -8,6 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="CsvHelper" Version="33.1.0" />
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.15" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.23" />
         <PackageReference Include="MySqlConnector" Version="2.6.2" />

@@ -83,21 +83,23 @@ JOIN StreetSlots AS street ON street.Slot = MOD(sample.StreetSlot - 1, street.Sl
 WHERE NOT EXISTS (SELECT 1 FROM `AEDOwners`);
 
 INSERT INTO `AEDs` (`AddressId`, `Created`, `LastUpdated`, `SerialNumber`,
-    `Access`, `AvailabilityStartHour`, `AvailabilityEndHour`, `Rating`)
+    `Access`, `AvailabilityStartHour`, `AvailabilityEndHour`, `Rating`, `Latitude`, `Longitude`)
 WITH AddressSlots AS (
     SELECT Id, ROW_NUMBER() OVER (ORDER BY Id) AS Slot, COUNT(*) OVER () AS SlotCount
     FROM `Addresses`
 )
 SELECT address.Id, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), sample.SerialNumber,
-    sample.Access, sample.AvailabilityStartHour, sample.AvailabilityEndHour, sample.Rating
+    sample.Access, sample.AvailabilityStartHour, sample.AvailabilityEndHour, sample.Rating,
+    sample.Latitude, sample.Longitude
 FROM (
     SELECT 1 AS AddressSlot, 'AED-7F3A9C21' AS SerialNumber,
-        0 AS Access, 0 AS AvailabilityStartHour, 24 AS AvailabilityEndHour, 1 AS Rating
-    UNION ALL SELECT 2, 'AED-B82D4E60', 1, 8, 20, 1
-    UNION ALL SELECT 3, 'AED-19C6F4A8', 2, 9, 17, 0
-    UNION ALL SELECT 4, 'AED-E5A207D3', 0, 22, 6, 1
-    UNION ALL SELECT 5, 'AED-6C91B0F7', 1, NULL, NULL, 0
-    UNION ALL SELECT 6, 'AED-A4308E2B', NULL, NULL, NULL, 0
+        0 AS Access, 0 AS AvailabilityStartHour, 24 AS AvailabilityEndHour, 1 AS Rating,
+        52.229676 AS Latitude, 21.012229 AS Longitude
+    UNION ALL SELECT 2, 'AED-B82D4E60', 1, 8, 20, 1, 53.123480, 18.008438
+    UNION ALL SELECT 3, 'AED-19C6F4A8', 2, 9, 17, 0, 50.043000, 21.587000
+    UNION ALL SELECT 4, 'AED-E5A207D3', 0, 22, 6, 1, 50.041187, 21.999121
+    UNION ALL SELECT 5, 'AED-6C91B0F7', 1, NULL, NULL, 0, 45.584500, 9.274400
+    UNION ALL SELECT 6, 'AED-A4308E2B', NULL, NULL, NULL, 0, 52.520008, 13.404954
 ) AS sample
 JOIN AddressSlots AS address ON address.Slot = MOD(sample.AddressSlot - 1, address.SlotCount) + 1
 WHERE NOT EXISTS (SELECT 1 FROM `AEDs`);

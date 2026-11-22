@@ -1,5 +1,4 @@
 using AED4Life.DataModel.Entities;
-using AED4Life.DataModel.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace AED4Life.DataModel;
@@ -54,19 +53,23 @@ public sealed class AED4LifeDbContext(DbContextOptions<AED4LifeDbContext> option
 		modelBuilder.Entity<AED>(entity => {
 			entity.ToTable("AEDs", table => {
 				table.HasCheckConstraint("CK_AEDs_Access", "`Access` IS NULL OR `Access` IN (0, 1, 2)");
-				table.HasCheckConstraint("CK_AEDs_Rating", "`Rating` IN (0, 1)");
+				table.HasCheckConstraint("CK_AEDs_Rating", "`Rating` IS NULL OR `Rating` IN (0, 1)");
+				table.HasCheckConstraint("CK_AEDs_Latitude", "`Latitude` IS NULL OR `Latitude` BETWEEN -90 AND 90");
+				table.HasCheckConstraint("CK_AEDs_Longitude", "`Longitude` IS NULL OR `Longitude` BETWEEN -180 AND 180");
 				table.HasCheckConstraint("CK_AEDs_AvailabilityHours",
-					"(`AvailabilityStartHour` IS NULL AND `AvailabilityEndHour` IS NULL) OR "
-					+ "(`AvailabilityStartHour` IS NOT NULL AND `AvailabilityEndHour` IS NOT NULL "
-					+ "AND `AvailabilityStartHour` BETWEEN 0 AND 23 AND `AvailabilityEndHour` BETWEEN 0 AND 24 "
-					+ "AND `AvailabilityStartHour` <> `AvailabilityEndHour`)");
+					"(`AvailabilityStartHour` IS NULL OR `AvailabilityStartHour` BETWEEN 0 AND 23) "
+					+ "AND (`AvailabilityEndHour` IS NULL OR `AvailabilityEndHour` BETWEEN 0 AND 24) "
+					+ "AND (`AvailabilityStartHour` IS NULL OR `AvailabilityEndHour` IS NULL "
+					+ "OR `AvailabilityStartHour` <> `AvailabilityEndHour`)");
 			});
 			entity.HasKey(aed => aed.Id);
 			entity.Property(aed => aed.Id).ValueGeneratedOnAdd();
 			entity.Property(aed => aed.Created).HasColumnType("datetime(6)");
 			entity.Property(aed => aed.LastUpdated).HasColumnType("datetime(6)");
+			entity.Property(aed => aed.Latitude).HasColumnType("double");
+			entity.Property(aed => aed.Longitude).HasColumnType("double");
 			entity.Property(aed => aed.Access).HasConversion<Int32>();
-			entity.Property(aed => aed.Rating).HasConversion<Int32>().HasDefaultValue(AEDRating.MissingData);
+			entity.Property(aed => aed.Rating).HasConversion<Int32>();
 			entity.HasOne<Address>().WithMany().HasForeignKey(aed => aed.AddressId)
 				.OnDelete(DeleteBehavior.Restrict)
 				.HasConstraintName("FK_AEDs_Address_AddressId");

@@ -39,12 +39,15 @@ INSERT INTO `TranslationProfileUnits`
 SELECT profile.Id, sample.Position, sample.FromColumn, sample.FromType, sample.ToColumn, sample.ToType
 FROM (
     SELECT 'Sample owner import' AS ProfileName, 0 AS Position,
-        'owner_name' AS FromColumn, 2 AS FromType, 'Name' AS ToColumn, 2 AS ToType
-    UNION ALL SELECT 'Sample owner import', 1, 'regon', 2, 'RegonNumber', 2
-    UNION ALL SELECT 'Sample address import', 0, 'city_id', 0, 'CityId', 0
-    UNION ALL SELECT 'Sample address import', 1, 'street_id', 0, 'StreetId', 0
-    UNION ALL SELECT 'Sample address import', 2, 'postal_code_id', 0, 'PostalCodeId', 0
-    UNION ALL SELECT 'Sample address import', 3, 'building_number', 0, 'BuildingNumber', 0
+        'owner_name' AS FromColumn, 2 AS FromType, 'AEDOwners.Name' AS ToColumn, 2 AS ToType
+    UNION ALL SELECT 'Sample owner import', 1, 'regon', 2, 'AEDOwners.RegonNumber', 2
+    UNION ALL SELECT 'Sample owner import', 2, 'is_public', 3, 'AEDOwners.IsPublic', 3
+    UNION ALL SELECT 'Sample owner import', 3, 'city_id', 0, 'AEDOwners.CityId', 0
+    UNION ALL SELECT 'Sample owner import', 4, 'street_id', 0, 'AEDOwners.StreetId', 0
+    UNION ALL SELECT 'Sample address import', 0, 'city_id', 0, 'Addresses.CityId', 0
+    UNION ALL SELECT 'Sample address import', 1, 'street_id', 0, 'Addresses.StreetId', 0
+    UNION ALL SELECT 'Sample address import', 2, 'postal_code_id', 0, 'Addresses.PostalCodeId', 0
+    UNION ALL SELECT 'Sample address import', 3, 'building_number', 0, 'Addresses.BuildingNumber', 0
 ) AS sample
 JOIN `TranslationProfiles` AS profile ON profile.Name = sample.ProfileName
 WHERE @SeedTranslationProfiles;

@@ -12,7 +12,7 @@ public static class AedEndpoints {
 			.WithName("GetAEDOwners")
 			.WithSummary("Get AED owners with address details")
 			.WithDescription("Returns all owners joined with their city and street, ordered by REGON. "
-				+ "Includes the city and street names without exposing location IDs. "
+				+ "Includes nullable city and street names without exposing location IDs; owners with unknown locations are included. "
 				+ "Returns an empty array when no owners exist. No request body is required.");
 		return group;
 	}
@@ -21,12 +21,14 @@ public static class AedEndpoints {
 		AED4LifeDbContext database, CancellationToken cancellationToken) {
 		List<AEDOwnerResponse> owners = await (
 			from owner in database.AEDOwners
-			join city in database.Cities on owner.CityId equals city.Id
-			join street in database.Streets on owner.StreetId equals street.Id
+			join city in database.Cities on owner.CityId equals city.Id into cities
+			from city in cities.DefaultIfEmpty()
+			join street in database.Streets on owner.StreetId equals street.Id into streets
+			from street in streets.DefaultIfEmpty()
 			orderby owner.RegonNumber
 			select new AEDOwnerResponse(
 				owner.RegonNumber, owner.IsPublic, owner.Name,
-				city.Name, street.Name)
+				city == null ? null : city.Name, street == null ? null : street.Name)
 		).ToListAsync(cancellationToken);
 
 		return TypedResults.Ok(owners);

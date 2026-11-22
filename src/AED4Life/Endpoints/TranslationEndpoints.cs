@@ -1,8 +1,11 @@
+using System.Text;
 using AED4Life.DataModel;
 using AED4Life.DataModel.DTOs;
 using AED4Life.DataModel.Entities;
 using AED4Life.Requests;
 using AED4Life.Trananslation;
+using AED4Life.Translation;
+using CsvHelper;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
@@ -31,9 +34,64 @@ public static class TranslationEndpoints {
 				+ "The trimmed name must contain 1-255 characters and be unique under the database's case-insensitive collation. "
 				+ "Provide at least one transporter unit with nonblank fromColumn and toColumn values. "
 				+ "Both fromType and toType are required: INTEGER, DOUBLE, STRING, or BOOLEAN (numeric values 0-3 are also accepted). "
-				+ "This stores configuration only; it does not execute translations.")
+				+ "Use qualified Table.Column destinations for CSV imports. This stores configuration only; it does not execute translations.")
 			.ProducesProblem(StatusCodes.Status409Conflict);
+		group.MapPost("/profiles({name})/import", ImportCsvAsync)
+			.WithName("ImportTranslationCsv")
+			.WithSummary("Import CSV data using a translation profile")
+			.WithDescription("Upload a UTF-8 comma-separated CSV as the multipart file field. The first record must contain unique headers. "
+				+ "The named profile maps headers to qualified Table.Column destinations and converts their types. "
+				+ "Related records and partial addresses are linked and upserted; serial/REGON keys have location/name fallbacks. "
+				+ "Empty/whitespace cells and NULL or \\N tokens become SQL NULL. Unmapped existing values are preserved. "
+				+ "Invalid nonempty values, ambiguous matches, or database conflicts roll back the entire file. "
+				+ "Returns processed row counts and inserted/updated operation counts by table.")
+			.DisableAntiforgery()
+			.ProducesProblem(StatusCodes.Status404NotFound)
+			.ProducesProblem(StatusCodes.Status409Conflict)
+			.ProducesProblem(StatusCodes.Status415UnsupportedMediaType);
 		return group;
+	}
+
+	private static async Task<Results<Ok<CsvImportResponse>, ValidationProblem, ProblemHttpResult>> ImportCsvAsync(
+		String name, IFormFile file, AED4LifeDbContext database, TranslationEngine engine, CancellationToken cancellationToken) {
+		if (!String.Equals(Path.GetExtension(file.FileName), ".csv", StringComparison.OrdinalIgnoreCase)) {
+			return TypedResults.Problem(statusCode: StatusCodes.Status415UnsupportedMediaType, title: "Only CSV files are supported.");
+		}
+		if (file.Length == 0) {
+			return TypedResults.ValidationProblem(new Dictionary<String, String[]> { ["file"] = ["The CSV file is empty."] });
+		}
+		TranslationProfile? profile = await database.TranslationProfiles.AsNoTracking().Include(profile => profile.Units)
+			.SingleOrDefaultAsync(profile => profile.Name == name, cancellationToken);
+		if (profile is null) {
+			return TypedResults.Problem(statusCode: StatusCodes.Status404NotFound,
+				title: "A translation profile with this name does not exist.");
+		}
+		try {
+			await using Stream stream = file.OpenReadStream();
+			return TypedResults.Ok(await engine.ImportAsync(stream, profile, cancellationToken));
+		} catch (CsvImportException exception) {
+			return TypedResults.ValidationProblem(new Dictionary<String, String[]> { [exception.Key] = [exception.Message] });
+		} catch (CsvHelperException exception) {
+			return TypedResults.ValidationProblem(new Dictionary<String, String[]> {
+				["file"] = [$"Invalid CSV near record {exception.Context?.Parser?.Row}. Check quoting and the number of fields."]
+			});
+		} catch (DecoderFallbackException) {
+			return TypedResults.ValidationProblem(new Dictionary<String, String[]> { ["file"] = ["The CSV must use valid UTF-8 encoding."] });
+		} catch (DbUpdateException exception) when (exception.InnerException is MySqlException { Number: 1062 or 1451 or 1452 or 1048 or 1364 or 1406 or 1264 or 4025 }) {
+			return TypedResults.Problem(statusCode: StatusCodes.Status409Conflict,
+				title: "The import conflicts with database constraints. No rows were imported.",
+				detail: "Check referenced IDs, unique values, required columns, and allowed field ranges.");
+		} catch (Exception exception) when (IsConcurrencyConflict(exception)) {
+			return TypedResults.Problem(statusCode: StatusCodes.Status409Conflict,
+				title: "The import conflicted with another database operation. No rows were imported. Retry the upload.");
+		}
+	}
+
+	private static Boolean IsConcurrencyConflict(Exception exception) {
+		while (exception is DbUpdateException or InvalidOperationException && exception.InnerException is Exception inner) {
+			exception = inner;
+		}
+		return exception is MySqlException { Number: 1213 or 1205 };
 	}
 
 	private static async Task<Ok<List<TranslationProfileResponse>>> GetProfilesAsync(

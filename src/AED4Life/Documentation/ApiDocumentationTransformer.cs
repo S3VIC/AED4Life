@@ -19,6 +19,9 @@ public sealed class ApiDocumentationTransformer : IOpenApiOperationTransformer {
 						["owners"] = Example("Owners with joined address details", new[] {
 							new AEDOwnerResponse("001234567", true, "Example school", "Warszawa", "Example Street")
 						}),
+						["unknownLocation"] = Example("Owner with unknown REGON, public flag, and location", new[] {
+							new AEDOwnerResponse(null, null, "Example operator", null, null)
+						}),
 						["empty"] = Example("No owners exist", Array.Empty<AEDOwnerResponse>())
 					};
 				break;
@@ -30,11 +33,23 @@ public sealed class ApiDocumentationTransformer : IOpenApiOperationTransformer {
 					TransporterUnits = [
 						new TransporterUnit {
 							FromColumn = "owner_name", FromType = VariableType.STRING,
-							ToColumn = "Name", ToType = VariableType.STRING
+							ToColumn = "AEDOwners.Name", ToType = VariableType.STRING
 						},
 						new TransporterUnit {
 							FromColumn = "regon", FromType = VariableType.STRING,
-							ToColumn = "RegonNumber", ToType = VariableType.STRING
+							ToColumn = "AEDOwners.RegonNumber", ToType = VariableType.STRING
+						},
+						new TransporterUnit {
+							FromColumn = "is_public", FromType = VariableType.BOOLEAN,
+							ToColumn = "AEDOwners.IsPublic", ToType = VariableType.BOOLEAN
+						},
+						new TransporterUnit {
+							FromColumn = "city_id", FromType = VariableType.INTEGER,
+							ToColumn = "AEDOwners.CityId", ToType = VariableType.INTEGER
+						},
+						new TransporterUnit {
+							FromColumn = "street_id", FromType = VariableType.INTEGER,
+							ToColumn = "AEDOwners.StreetId", ToType = VariableType.INTEGER
 						}
 					]
 				};
@@ -86,6 +101,56 @@ public sealed class ApiDocumentationTransformer : IOpenApiOperationTransformer {
 						["duplicateName"] = Example("Duplicate profile name", TypedResults.Problem(
 							statusCode: StatusCodes.Status409Conflict,
 							title: "A translation profile with this name already exists.").ProblemDetails)
+					};
+				break;
+
+			case "ImportTranslationCsv":
+				if (operation.RequestBody is not OpenApiRequestBody importBody) {
+					throw new InvalidOperationException("The CSV import endpoint must declare a multipart request body.");
+				}
+				importBody.Description = "A multipart/form-data upload with one CSV file in the file field. "
+					+ "Use UTF-8, a header record, comma delimiters, and standard CSV quoting. "
+					+ "Profile destinations must use Cities.Name, Streets.Name, PostalCodes.Code, Addresses.BuildingNumber, "
+					+ "AEDOwners.RegonNumber, AEDs.SerialNumber, or other writable columns of those tables. "
+					+ "IDs are generated; mapped related records supply foreign keys automatically, and partial addresses are inferred for AEDs. "
+					+ "Matching keys: city/street name, postal code, address location and building number, owner REGON, AED serial number. "
+					+ "Without REGON, owners match by name + city + street; without serial numbers, AEDs match by latitude + longitude + address "
+					+ "when both coordinates are known, or are inserted otherwise. "
+					+ "Business values are nullable; empty lookups/owners are skipped and existing records retain unmapped values. "
+					+ "Numbers use invariant culture; booleans accept true/false or 1/0. "
+					+ "Empty/whitespace cells and literal NULL or \\N become SQL NULL. Invalid nonempty values are rejected.";
+				ResponseContent(operation, "200", "The entire file was committed. Counts report insert/update operations per table.")
+					.Examples = new Dictionary<String, IOpenApiExample> {
+						["imported"] = Example("Imported one AED and its related address", new CsvImportResponse(
+							"AED import", 1, new Dictionary<String, CsvImportTableResult> {
+								["Cities"] = new(1, 0), ["Streets"] = new(1, 0), ["PostalCodes"] = new(1, 0),
+								["Addresses"] = new(1, 0), ["AEDs"] = new(1, 0)
+							}))
+					};
+				ResponseContent(operation, "400", "Invalid CSV, profile mappings, missing values, or ambiguous matching keys. The file was rolled back.", "application/problem+json")
+					.Examples = new Dictionary<String, IOpenApiExample> {
+						["invalidValue"] = Example("Invalid building number", TypedResults.ValidationProblem(
+							new Dictionary<String, String[]> {
+								["rows[2].Addresses.BuildingNumber"] = ["The value cannot be converted to an integer building number."]
+							}).ProblemDetails)
+					};
+				ResponseContent(operation, "404", "No profile matches the supplied name.", "application/problem+json")
+					.Examples = new Dictionary<String, IOpenApiExample> {
+						["notFound"] = Example("Profile not found", TypedResults.Problem(
+							statusCode: StatusCodes.Status404NotFound,
+							title: "A translation profile with this name does not exist.").ProblemDetails)
+					};
+				ResponseContent(operation, "409", "A database constraint or concurrent operation prevented the import. The file was rolled back.", "application/problem+json")
+					.Examples = new Dictionary<String, IOpenApiExample> {
+						["conflict"] = Example("Database conflict", TypedResults.Problem(
+							statusCode: StatusCodes.Status409Conflict,
+							title: "The import conflicts with database constraints. No rows were imported.").ProblemDetails)
+					};
+				ResponseContent(operation, "415", "The uploaded file must have a .csv filename.", "application/problem+json")
+					.Examples = new Dictionary<String, IOpenApiExample> {
+						["unsupportedFile"] = Example("CSV files only", TypedResults.Problem(
+							statusCode: StatusCodes.Status415UnsupportedMediaType,
+							title: "Only CSV files are supported.").ProblemDetails)
 					};
 				break;
 

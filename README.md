@@ -62,7 +62,8 @@ is available at `https://localhost:7231/openapi/v1.json`.
 
 All current endpoints include descriptions and response examples:
 `GET /api/aed/owners`, `GET /api/translations/profiles`,
-`GET /api/translations/profiles({name})`, `POST /api/translations/profiles`, and
+`GET /api/translations/profiles({name})`, `POST /api/translations/profiles`,
+`POST /api/translations/profiles({name})/import`, and
 `GET /weatherforecast`. The profile endpoint also includes an editable JSON
 request example and examples of `400` validation and `409` duplicate-name errors.
 Scalar generates request snippets and lets you send requests to the running app;
@@ -95,9 +96,10 @@ do not migrate that layout; do not delete a populated volume to upgrade it.
 
 Entity fields are mapped as public properties. `AED`, `Address`, `City`,
 `Street`, and `AEDOwner` have auto-generated `Int64` IDs; `PostalCode` has an
-auto-generated `Int32` ID and a required `Code` of at most six characters.
-`AEDOwner.RegonNumber` is a required,
-unique string of at most 14 characters, preserving leading zeros. The owner
+auto-generated `Int32` ID and a nullable `Code` of at most six characters.
+`AEDOwner.RegonNumber` is a nullable,
+unique string of at most 14 characters, preserving leading zeros (multiple
+unknown REGONs are allowed). The owner
 endpoint returns REGON as a JSON string with the owner's name, public flag,
 city name, and street name, without exposing IDs. It no longer returns a postal
 code: owners still reference cities and streets directly, and a city does not
@@ -105,9 +107,13 @@ identify a single postal code.
 `AED.AddressId` references `Addresses`; each address contains `CityId`,
 `StreetId`, `PostalCodeId`, and an integer `BuildingNumber`. All these foreign
 keys restrict deletion while referenced. No AED-to-owner relationship has been
-invented. City/street names, owner names, and serial numbers remain required
-`LONGTEXT`; timestamps are supplied by application
+invented. Business-data fields, including names, serial numbers, address parts,
+foreign keys, public flags, and ratings, are nullable. City/street names, owner
+names, and serial numbers use `LONGTEXT`; timestamps are supplied by application
 code, with microsecond database precision.
+Generated IDs and operational timestamps remain nonnullable, as do translation
+profile names and mapping definitions. The owner endpoint includes owners whose
+city or street is unknown and returns unknown fields as JSON `null`.
 
 ## Fill empty tables
 
@@ -123,7 +129,8 @@ it does not read or print passwords. Optional `-Distribution` and `-ProjectName`
 parameters select another WSL distribution or Compose project.
 
 It creates missing tables, applies `003-unique-owner-regon.sql`,
-`004-translation-profiles.sql`, and `005-aed-availability.sql`, then executes
+`004-translation-profiles.sql`, `005-aed-availability.sql`, and
+`006-aed-coordinates.sql` and `007-nullable-import-data.sql`, then executes
 `002-populate-tables.sql`.
 Each location/AED/owner sample-data table receives rows only when completely
 empty; partially populated tables are left unchanged. Sample addresses use
@@ -134,7 +141,7 @@ demonstration data, not verified addresses.
 
 An empty database receives six cities, four streets, six postal codes, six
 addresses, five owners, and six AEDs. `004` also seeds two sample translation
-profiles with six ordered units only when there are no profiles; existing
+profiles with nine ordered units only when there are no profiles; existing
 profiles and their units are preserved.
 
 Location/AED/owner population and translation-profile population each run in
@@ -168,14 +175,32 @@ its ordered `TransporterUnits` array:
       {
         "fromColumn": "owner_name",
         "fromType": "STRING",
-        "toColumn": "Name",
+        "toColumn": "AEDOwners.Name",
         "toType": "STRING"
       },
       {
         "fromColumn": "regon",
         "fromType": "STRING",
-        "toColumn": "RegonNumber",
+        "toColumn": "AEDOwners.RegonNumber",
         "toType": "STRING"
+      },
+      {
+        "fromColumn": "is_public",
+        "fromType": "BOOLEAN",
+        "toColumn": "AEDOwners.IsPublic",
+        "toType": "BOOLEAN"
+      },
+      {
+        "fromColumn": "city_id",
+        "fromType": "INTEGER",
+        "toColumn": "AEDOwners.CityId",
+        "toType": "INTEGER"
+      },
+      {
+        "fromColumn": "street_id",
+        "fromType": "INTEGER",
+        "toColumn": "AEDOwners.StreetId",
+        "toType": "INTEGER"
       }
     ]
   }
@@ -204,6 +229,145 @@ docker compose exec -T mariadb sh -c 'MYSQL_PWD="$MARIADB_PASSWORD" exec mariadb
 
 This script is safe to rerun and does not populate or modify existing AED data.
 
+## Import CSV data
+
+`POST /api/translations/profiles({name})/import` accepts one CSV upload in the
+multipart field `file`. URL-encode the profile name inside parentheses.
+For example, after creating the owner profile above:
+
+```powershell
+curl.exe --fail-with-body -F "file=@owners.csv;type=text/csv" "https://localhost:7231/api/translations/profiles(Owner%20import)/import"
+```
+
+```csv
+owner_name,regon,is_public,city_id,street_id
+"Example school, main building",001234567,true,1,1
+```
+
+Use actual existing city/street IDs in this example. Alternatively, map
+`Cities.Name` and `Streets.Name` in the same profile to create or match those
+records and supply the owner's foreign keys automatically.
+
+Only UTF-8 comma-separated CSV is supported, with optional BOM, a required
+header record, and standard quoting (including escaped quotes and embedded
+newlines). Headers are case-sensitive and must be unique and nonblank.
+Unmapped CSV columns are ignored, and blank lines are skipped. Missing mapped
+headers, inconsistent field counts, malformed quoting, empty files, and
+header-only files are rejected.
+
+Import destinations must use exact, case-sensitive `Table.Column` names from
+`Cities`, `Streets`, `PostalCodes`, `Addresses`, `AEDOwners`, or `AEDs`. Generated
+`Id` columns and translation-configuration tables cannot be imported. Older
+profiles with unqualified destinations such as `Name` must be replaced with
+qualified mappings before importing; existing stored profiles are not rewritten.
+Each destination may be mapped only once.
+
+Each row is processed in dependency order and upserted using these keys:
+
+| Table | Matching key |
+| --- | --- |
+| `Cities`, `Streets` | `Name` |
+| `PostalCodes` | `Code` |
+| `Addresses` | `CityId`, `StreetId`, `PostalCodeId`, `BuildingNumber` |
+| `AEDOwners` | `RegonNumber` when known; otherwise `Name` + `CityId` + `StreetId` when the name is known |
+| `AEDs` | `SerialNumber` when known; otherwise `Latitude` + `Longitude` + `AddressId` when both coordinates are known |
+
+Name/code comparisons use the database collation. Multiple existing records
+matching the same key cause a validation error rather than choosing an
+arbitrary record. Address keys can include unknown parts, matched as SQL `NULL`.
+When no reliable AED or owner key is available, a new record is inserted rather
+than merging unrelated unknown records. In particular, reimporting AED rows
+without serial numbers and without both coordinates creates new AEDs.
+Only mapped values and automatically linked foreign keys are changed on
+existing records. Missing business-data values default to `NULL`, including
+rating. IDs are generated and AED timestamps default to UTC now. Empty mapped
+timestamps use generated/preserved timestamps, not SQL `NULL`. AED updates
+refresh `LastUpdated` unless explicitly supplied.
+
+Mapped city/street records supply IDs to mapped addresses and owners; postal
+codes supply IDs to mapped addresses; addresses supply IDs to mapped AEDs.
+When an AED and city/street/postal-code lookups are mapped without an explicit
+address, the importer automatically creates or matches a partial address.
+Building numbers and any missing location components stay `NULL`.
+Wholly empty lookup records, addresses, and owners are skipped instead of
+creating unnamed placeholder rows. AED rows are still imported with generated
+IDs and whatever data is available. Empty mapped related lookups clear their
+inferred foreign keys; an explicitly supplied nonnull foreign key takes
+precedence over an empty lookup.
+Explicit foreign keys may instead refer to existing records. Supplying an
+explicit ID that disagrees with a related mapped record is rejected. No
+AED-to-owner link is inferred.
+
+For example, a profile mapping the following five columns creates or matches
+a complete AED location without any IDs in the CSV:
+
+| CSV header | `fromType` | `toColumn` | `toType` |
+| --- | --- | --- | --- |
+| `city` | `STRING` | `Cities.Name` | `STRING` |
+| `street` | `STRING` | `Streets.Name` | `STRING` |
+| `postal_code` | `STRING` | `PostalCodes.Code` | `STRING` |
+| `building` | `INTEGER` | `Addresses.BuildingNumber` | `INTEGER` |
+| `serial` | `STRING` | `AEDs.SerialNumber` | `STRING` |
+
+Values are parsed as `fromType`, then converted to `toType`. Use `STRING` for
+text columns and timestamps, `INTEGER` for integer/enum columns, `DOUBLE` for
+GPS coordinates, and `BOOLEAN` for `IsPublic`. Numbers use invariant culture; fractional values cannot be
+converted to integers. Booleans accept `true`/`false` (case-insensitive) or `1`/`0`.
+Empty/whitespace-only cells, case-insensitive literal `NULL`, and the literal
+`\N` become SQL `NULL` before type conversion. Nonempty malformed values still
+fail validation; column length and enum/range restrictions remain enforced. Keep REGON and
+postal-code values as strings to preserve leading zeros.
+
+### OpenAEDMap-compatible sparse imports
+
+The `openaedmap-2` profile works unchanged with these mappings:
+
+| CSV header | `fromType` | `toColumn` | `toType` |
+| --- | --- | --- | --- |
+| `addr:city` | `STRING` | `Cities.Name` | `STRING` |
+| `addr:street` | `STRING` | `Streets.Name` | `STRING` |
+| `addr:postcode` | `STRING` | `PostalCodes.Code` | `STRING` |
+| `lat` | `DOUBLE` | `AEDs.Latitude` | `DOUBLE` |
+| `lon` | `DOUBLE` | `AEDs.Longitude` | `DOUBLE` |
+| `operator` | `STRING` | `AEDOwners.Name` | `STRING` |
+
+```csv
+addr:city,addr:street,addr:postcode,lat,lon,operator
+Warszawa,Example Street,00-001,52.229676,21.012229,Example operator
+,,,52.230000,21.013000,
+NULL,\N,, ,21.014000,NULL
+```
+
+Upload to `/api/translations/profiles(openaedmap-2)/import`. No serial number,
+REGON, public flag, or building number is required. The importer infers partial
+addresses and uses the fallback matching keys described above. It does not
+invent an AED-to-owner relationship that is absent from the schema.
+
+Before importing into an existing database, run
+`.\scripts\Initialize-Database.ps1` to apply
+`database\007-nullable-import-data.sql`. The upgrade preserves existing values;
+it does not rewrite existing nonnull data or translation profiles.
+Mapped headers must still exist, even if every cell beneath one is empty.
+
+The entire file runs in one serializable transaction: invalid data or database
+conflicts roll back inserts and updates, including related lookup records.
+Successful imports return `200` with `profileName`, `rowsProcessed`, and
+per-table `inserted`/`updated` operation counts. Unchanged matches do not count as
+updates; repeated rows can update the same record more than once.
+Validation errors return `400` with a row/column error when available, missing
+profiles return `404`, database conflicts return `409`, and non-`.csv` uploads
+return `415`. Retry a concurrency conflict after the other operation completes.
+Existing ASP.NET Core request-size limits still apply.
+
+Run the focused integration checks from PowerShell 7 with Docker running in WSL:
+
+```powershell
+.\scripts\Test-CsvImport.ps1
+```
+
+The checks create and remove an isolated MariaDB container and API process;
+they do not modify the application's existing database.
+
 ## AED access, hours, and rating
 
 The `AED` entity and `AEDs` table include:
@@ -213,10 +377,10 @@ The `AED` entity and `AEDs` table include:
 | `Access` | `AEDAccess.Open` (0), `Emergency` (1), `Private` (2), or `NULL` for unknown |
 | `AvailabilityStartHour` | Whole hour, 0-23, or `NULL` |
 | `AvailabilityEndHour` | Whole hour, 0-24, or `NULL` |
-| `Rating` | `AEDRating.MissingData` (0, default) or `Fine` (1) |
+| `Rating` | `AEDRating.MissingData` (0), `Fine` (1), or `NULL` for unknown |
 
-Availability hours must either both be unknown (`NULL`) or both be supplied.
-Equal hours are invalid. `0` to `24` means all-day availability; overnight ranges
+Availability hours may independently be unknown (`NULL`).
+Equal known hours are invalid. `0` to `24` means all-day availability; overnight ranges
 such as `22` to `6` are allowed. Enums are stored as checked integers and serialize
 to their names when used in JSON.
 
@@ -228,8 +392,27 @@ docker compose exec -T mariadb sh -c 'MYSQL_PWD="$MARIADB_PASSWORD" exec mariadb
 ```
 
 The upgrade is safe to rerun. Existing AEDs retain their original data and gain
-unknown access/hours plus `MissingData` rating; no access or availability is
+unknown access/hours/rating; no access or availability is
 inferred from existing rows.
+
+## AED GPS coordinates
+
+`AED.Latitude` and `AED.Longitude` use nullable .NET `Double` properties and
+MariaDB `DOUBLE` columns. Double precision is more than sufficient for GPS
+coordinates. Values are decimal degrees: latitude ranges from -90 to 90 and
+longitude from -180 to 180, inclusive. `NULL` means unknown; zero is a valid
+coordinate. Both EF mappings and SQL define matching range constraints.
+
+The six dummy AED rows include demonstration coordinates, not verified device
+locations. Existing AEDs are not assigned invented coordinates. To add the
+columns to an existing database, run `.\scripts\Initialize-Database.ps1`, or apply
+`database\006-aed-coordinates.sql` directly. The upgrade preserves existing
+records, leaves previously unknown coordinates `NULL`, and is safe to rerun.
+
+CSV profiles can map `AEDs.Latitude` and `AEDs.Longitude` with `toType: "DOUBLE"`.
+Use `fromType: "DOUBLE"` for numeric input, or `"STRING"` to convert text.
+Empty mapped cells become `NULL`; unmapped coordinates remain unchanged.
+Nonfinite and out-of-range values are rejected and roll back the file.
 
 ## Persistent storage
 

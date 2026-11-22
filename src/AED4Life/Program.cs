@@ -1,6 +1,7 @@
 using AED4Life.DataModel;
 using AED4Life.Documentation;
 using AED4Life.Endpoints;
+using AED4Life.Translation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using Scalar.AspNetCore;
@@ -15,6 +16,7 @@ if (String.IsNullOrWhiteSpace(connectionString)) {
 
 builder.Services.AddDbContext<AED4LifeDbContext>(options =>
 	options.UseMySql(connectionString, new MariaDbServerVersion(new Version(12, 3, 3))));
+builder.Services.AddScoped<TranslationEngine>();
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -23,7 +25,7 @@ builder.Services.AddOpenApi(options => {
 		document.Info = new OpenApiInfo {
 			Title = "AED4Life API",
 			Version = "v1",
-			Description = "AED owner lookup and reusable translation profile configuration. Includes a sample weather endpoint."
+			Description = "AED owner lookup, reusable translation profiles, and transactional CSV import. Includes a sample weather endpoint."
 		};
 		return Task.CompletedTask;
 	});
