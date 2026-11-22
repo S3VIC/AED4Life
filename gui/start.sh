@@ -45,8 +45,8 @@ fi
 echo "Domain: $DOMAIN"
 
 say "Checking ports 80/443"
-if ss -ltnp | grep -E ':(80|443)\s' | grep -vq caddy; then
-  echo "Ports 80/443 are used by another program:"; ss -ltnp | grep -E ':(80|443)\s'; exit 1
+if ss -ltnp | grep -E ":(80|443)\s" | grep -vq caddy; then
+  echo "Ports 80/443 are used by another program:"; ss -ltnp | grep -E ":(80|443)\s"; exit 1
 fi
 
 say "Installing Caddy"
@@ -156,7 +156,7 @@ say "Smoke test"
 sleep 5
 if curl -fsS -m 15 "http://127.0.0.1:8090/api/aed/najblizsze?lat=52.23&lon=21.01&n=1" >/dev/null 2>&1; then echo "verification API: OK"; else
   [ "$HAVE_VERIFY" -eq 1 ] && { echo "verification API NOT responding:"; journalctl -u punktzycia-api -n 15 --no-pager; } || echo "verification backend not installed (aedverify not found) - skipped"; fi
-if curl -sk -m 15 "https://127.0.0.1/api4life/api/aed/nearest?latitude=52.23&longitude=21.01" -H "Host: $DOMAIN" | grep -q latitude; then
+if curl -sk -m 15 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api4life/api/aed/nearest?latitude=52.23&longitude=21.01" | grep -q latitude; then
   echo "AED4Life API via proxy: OK"; else echo "WARNING: AED4Life API not reachable via $API_UPSTREAM (the map will stay empty)"; fi
 
 echo
