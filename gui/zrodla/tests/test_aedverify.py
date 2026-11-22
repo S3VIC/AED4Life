@@ -183,3 +183,10 @@ def test_model_api(monkeypatch):
         assert info["metoda"] == "heurystyka_znaku_ilcor" and "blad_modelu" in info
     finally:
         s.shutdown()
+
+
+def test_prog_wniosku():
+    w = engine.verify(jpg(), g(acc=300, ts=NOW - timedelta(hours=2)), AED, NOW)
+    assert w.wynik < engine.PROG_WNIOSKU and w.werdykt == engine.ODRZUCONY and "ponizej_progu" in w.flagi
+    w = engine.verify(jpg(), g(acc=300), AED, NOW)
+    assert w.wynik >= engine.PROG_WNIOSKU and w.werdykt == engine.RECZNIE

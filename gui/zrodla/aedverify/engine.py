@@ -19,6 +19,7 @@ EXIF_GPS_MAX = 100
 EXIF_CZAS_MAX = timedelta(hours=24)
 SWIEZOSC = timedelta(minutes=15)
 DUP_BITS = 6
+PROG_WNIOSKU = 50
 
 
 def haversine(a, b, c, d):
@@ -70,7 +71,12 @@ def verify(zdjecie, gps, aed, teraz=None, znane_hashe=(), typ="jest"):
     ex_out = {k: ex.get(k) for k in ("lat", "lon", "czas", "model", "jest_exif")}
 
     def koniec(w, p, d=None, tol=None, poz=None, ai=None):
-        return Wynik(w, max(0, min(100, round(p))), None if d is None else round(d, 1),
+        p = max(0, min(100, round(p)))
+        if p < PROG_WNIOSKU and w != ODRZUCONY:
+            pow.append(f"wynik {p}/100 poniżej progu {PROG_WNIOSKU} – zgłoszenie odrzucone")
+            flagi.append("ponizej_progu")
+            w, poz = ODRZUCONY, None
+        return Wynik(w, p, None if d is None else round(d, 1),
                      None if tol is None else round(tol, 1), pow, flagi, ex_out, ai or {}, h, poz)
 
     if lat is None or lon is None:
