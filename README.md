@@ -90,6 +90,13 @@ number), `Access` and both availability hours are known, otherwise **`MissingDat
 `GET /api/aed/statistics` returns `total`, `valid`, `missingData`, `unknown` (NULL rating) and
 `validPercentage = valid / total * 100` (two decimals). The GUI's "Weryfikacja danych" tab shows this value.
 
+`POST /api/aed/validate` (Maintainer or Admin) goes through every AED and applies the data standard:
+**location** (latitude and longitude), **address** (city, street, postal code, building number), **name**
+(the owner's name; an AED has none of its own), **access** and both **availability hours** must be known.
+Anything missing marks the AED `MissingData`, a complete one `Fine`; changed rows get a new `LastUpdated`.
+`?dryRun=true` only reports. The response lists `checked`, `valid`, `missingData`, `changed`, how many AEDs miss
+each group, and the first 100 invalid AEDs with what they miss. Accepting a report uses the same standard.
+
 The upgrade scripts must be applied before these endpoints work on an existing database
 (`DataRating` comes from `014-aed-data-rating.sql`).
 

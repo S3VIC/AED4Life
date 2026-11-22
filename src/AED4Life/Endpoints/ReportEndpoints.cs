@@ -59,7 +59,7 @@ public static class ReportEndpoints {
 				+ "populates the main structure: the linked AED is updated, or a new AED is created from the report's coordinates when none is linked. "
 				+ "Cities, streets, postal codes and the address are found or created; access (Open/Private from isPubliclyAccessible), availability hours and coordinates "
 				+ "are taken from the report where provided, and the AED's DataRating is recomputed with the AED4Life data standard "
-				+ "(Fine when coordinates, a complete address, access and both hours are known, otherwise MissingData). The report is linked to the AED. "
+				+ "(Fine when coordinates, a complete address, the owner's name, access and both hours are known, otherwise MissingData). The report is linked to the AED. "
 				+ "Reports without a linked AED and without coordinates cannot be accepted (409).")
 			.RequireAuthorization()
 			.ProducesProblem(StatusCodes.Status401Unauthorized)
@@ -177,8 +177,15 @@ public static class ReportEndpoints {
 				aed.AvailabilityStartHour = start;
 				aed.AvailabilityEndHour = end;
 			}
-			Boolean addressComplete = cityId is not null && streetId is not null && postalCodeId is not null && buildingNumber is not null;
-			aed.DataRating = AEDDataStandard.Evaluate(aed, addressComplete);
+			String? cityText = report.CityName ?? (cityId is Int64 resolvedCity
+				? await database.Cities.Where(candidate => candidate.Id == resolvedCity).Select(candidate => candidate.Name).FirstOrDefaultAsync(cancellationToken) : null);
+			String? streetText = report.StreetName ?? (streetId is Int64 resolvedStreet
+				? await database.Streets.Where(candidate => candidate.Id == resolvedStreet).Select(candidate => candidate.Name).FirstOrDefaultAsync(cancellationToken) : null);
+			String? postalText = report.PostalCode ?? (postalCodeId is Int32 resolvedCode
+				? await database.PostalCodes.Where(candidate => candidate.Id == resolvedCode).Select(candidate => candidate.Code).FirstOrDefaultAsync(cancellationToken) : null);
+			String? ownerText = aed.OwnerId is Int64 ownerId
+				? await database.AEDOwners.Where(candidate => candidate.Id == ownerId).Select(candidate => candidate.Name).FirstOrDefaultAsync(cancellationToken) : null;
+			aed.DataRating = AEDDataStandard.Evaluate(aed, cityText, streetText, postalText, buildingNumber, ownerText);
 			aed.LastUpdated = now;
 			await database.SaveChangesAsync(cancellationToken);
 

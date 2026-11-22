@@ -1,9 +1,11 @@
+using System.Security.Claims;
 using AED4Life.DataModel;
 using AED4Life.DataModel.DTOs;
 using AED4Life.DataModel.Entities;
 using AED4Life.DataModel.Enums;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace AED4Life.Endpoints;
 
@@ -33,6 +35,17 @@ public static class AedEndpoints {
 			.WithSummary("Get data verification statistics")
 			.WithDescription("Returns total, valid (DataRating Fine), missingData (DataRating MissingData) and unknown (DataRating null) AED counts, "
 				+ "and validPercentage = valid / total * 100 rounded to two decimals (0 when there are no AEDs).");
+		group.MapPost("/validate", ValidateAsync)
+			.WithName("ValidateAEDs")
+			.WithSummary("Validate all AEDs against the data standard (maintainers and administrators)")
+			.WithDescription("Requires a bearer token of a Maintainer or Administrator. Goes through every AED and checks the data standard: "
+				+ "location (latitude and longitude), address (city, street, postal code and building number), name (the owner's name), access, and both availability hours. "
+				+ "An AED missing any of them is marked DataRating MissingData, a complete one Fine; changed AEDs get a new LastUpdated. "
+				+ "Optional dryRun=true only reports. The response gives the number checked, valid, missing, changed, a per-group count of what is missing, "
+				+ "and up to 100 invalid AEDs (by ID) with their missing groups.")
+			.RequireAuthorization()
+			.ProducesProblem(StatusCodes.Status401Unauthorized)
+			.ProducesProblem(StatusCodes.Status403Forbidden);
 		group.MapGet("/nearest", GetNearestAsync)
 			.WithName("GetNearestAvailableAED")
 			.WithSummary("Find the nearest available AED")
@@ -66,6 +79,74 @@ public static class AedEndpoints {
 		Int32 missing = await database.AEDs.CountAsync(aed => aed.DataRating == AEDRating.MissingData, cancellationToken);
 		Double percentage = total == 0 ? 0 : Math.Round(100.0 * valid / total, 2);
 		return TypedResults.Ok(new AEDStatisticsResponse(total, valid, missing, total - valid - missing, percentage));
+	}
+
+	private static async Task<Results<Ok<AEDValidationResponse>, ProblemHttpResult>> ValidateAsync(
+		Boolean? dryRun, ClaimsPrincipal principal, AED4LifeDbContext database, CancellationToken cancellationToken) {
+		if (!AuthEndpoints.IsMaintainer(await AuthEndpoints.GetCallerAsync(principal, database, cancellationToken))) {
+			return AuthEndpoints.Forbidden("Only maintainers and administrators can validate AEDs.");
+		}
+		Boolean preview = dryRun ?? false;
+
+		var rows = await (
+			from aed in database.AEDs.AsNoTracking()
+			join owner in database.AEDOwners on aed.OwnerId equals owner.Id into owners
+			from owner in owners.DefaultIfEmpty()
+			join address in database.Addresses on aed.AddressId equals address.Id into addresses
+			from address in addresses.DefaultIfEmpty()
+			join city in database.Cities on address.CityId equals city.Id into cities
+			from city in cities.DefaultIfEmpty()
+			join street in database.Streets on address.StreetId equals street.Id into streets
+			from street in streets.DefaultIfEmpty()
+			join postalCode in database.PostalCodes on address.PostalCodeId equals postalCode.Id into postalCodes
+			from postalCode in postalCodes.DefaultIfEmpty()
+			orderby aed.Id
+			select new {
+				aed.Id, aed.Latitude, aed.Longitude, aed.Access, aed.AvailabilityStartHour, aed.AvailabilityEndHour, aed.DataRating,
+				OwnerName = owner == null ? null : owner.Name,
+				CityName = city == null ? null : city.Name,
+				StreetName = street == null ? null : street.Name,
+				PostalCode = postalCode == null ? null : postalCode.Code,
+				BuildingNumber = address == null ? null : address.BuildingNumber
+			}).ToListAsync(cancellationToken);
+
+		Dictionary<String, Int32> missing = AEDDataStandard.AllGaps.ToDictionary(gap => gap, _ => 0);
+		List<AEDValidationIssue> issues = [];
+		List<Int64> toFine = [], toMissing = [];
+		Int32 valid = 0, invalid = 0;
+		foreach (var row in rows) {
+			List<String> gaps = AEDDataStandard.Gaps(row.Latitude, row.Longitude, row.CityName, row.StreetName, row.PostalCode,
+				row.BuildingNumber, row.OwnerName, row.Access, row.AvailabilityStartHour, row.AvailabilityEndHour);
+			AEDRating rating = gaps.Count == 0 ? AEDRating.Fine : AEDRating.MissingData;
+			if (gaps.Count == 0) {
+				valid++;
+			} else {
+				invalid++;
+				foreach (String gap in gaps) {
+					missing[gap]++;
+				}
+				if (issues.Count < 100) {
+					issues.Add(new AEDValidationIssue(row.Id, [.. gaps]));
+				}
+			}
+			if (row.DataRating != rating) {
+				(rating == AEDRating.Fine ? toFine : toMissing).Add(row.Id);
+			}
+		}
+
+		Int32 changed = toFine.Count + toMissing.Count;
+		if (!preview && changed > 0) {
+			DateTime now = DateTime.UtcNow;
+			await using IDbContextTransaction transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+			foreach ((AEDRating rating, List<Int64> ids) in new[] { (AEDRating.Fine, toFine), (AEDRating.MissingData, toMissing) }) {
+				foreach (Int64[] chunk in ids.Chunk(1000)) {
+					await database.AEDs.Where(aed => chunk.Contains(aed.Id)).ExecuteUpdateAsync(setters => setters
+						.SetProperty(aed => aed.DataRating, rating).SetProperty(aed => aed.LastUpdated, now), cancellationToken);
+				}
+			}
+			await transaction.CommitAsync(cancellationToken);
+		}
+		return TypedResults.Ok(new AEDValidationResponse(preview, rows.Count, valid, invalid, changed, missing, issues));
 	}
 
 	private static IQueryable<AEDDetailsResponse> QueryDetails(AED4LifeDbContext database, Boolean validOnly) {
