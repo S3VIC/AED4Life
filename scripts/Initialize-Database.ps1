@@ -12,7 +12,7 @@ $previousOutputEncoding = $OutputEncoding
 try {
     $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
-    foreach ($fileName in @('001-initial-schema.sql', '003-unique-owner-regon.sql', '004-translation-profiles.sql', '005-aed-availability.sql', '006-aed-coordinates.sql', '007-nullable-import-data.sql', '008-aed-owner.sql', '009-users-and-aed-reports.sql', '010-user-password-hash.sql', '011-required-report-photo.sql', '002-populate-tables.sql')) {
+    foreach ($fileName in @('001-initial-schema.sql', '003-unique-owner-regon.sql', '004-translation-profiles.sql', '005-aed-availability.sql', '006-aed-coordinates.sql', '007-nullable-import-data.sql', '008-aed-owner.sql', '009-users-and-aed-reports.sql', '010-user-password-hash.sql', '011-required-report-photo.sql', '012-report-placement-metadata.sql', '013-report-rating.sql', '002-populate-tables.sql')) {
         $sqlPath = Join-Path $projectDirectory "database\$fileName"
         $sql = Get-Content -LiteralPath $sqlPath -Raw -Encoding UTF8
         Write-Host "Applying $fileName..."

@@ -111,6 +111,14 @@ public sealed class AED4LifeDbContext(DbContextOptions<AED4LifeDbContext> option
 			entity.ToTable("AEDReports", table => {
 				table.HasCheckConstraint("CK_AEDReports_Status", "`Status` IN (0, 1, 2, 3)");
 				table.HasCheckConstraint("CK_AEDReports_PhotoUrl", "`PhotoUrl` REGEXP '[^[:space:]]'");
+				table.HasCheckConstraint("CK_AEDReports_Description", "`Description` REGEXP '[^[:space:]]'");
+				table.HasCheckConstraint("CK_AEDReports_IsPubliclyAccessible", "`IsPubliclyAccessible` IS NULL OR `IsPubliclyAccessible` IN (0, 1)");
+				table.HasCheckConstraint("CK_AEDReports_Rating", "`Rating` IS NULL OR `Rating` BETWEEN 0 AND 100");
+				table.HasCheckConstraint("CK_AEDReports_AvailabilityHours",
+					"(`AvailabilityStartHour` IS NULL OR `AvailabilityStartHour` BETWEEN 0 AND 23) "
+					+ "AND (`AvailabilityEndHour` IS NULL OR `AvailabilityEndHour` BETWEEN 0 AND 24) "
+					+ "AND (`AvailabilityStartHour` IS NULL OR `AvailabilityEndHour` IS NULL "
+					+ "OR `AvailabilityStartHour` <> `AvailabilityEndHour`)");
 			});
 			entity.HasKey(report => report.Id);
 			entity.Property(report => report.Id).ValueGeneratedOnAdd();

@@ -20,21 +20,27 @@ public sealed class ApiDocumentationTransformer : IOpenApiOperationTransformer {
 					|| !reportBody.Content.TryGetValue("multipart/form-data", out OpenApiMediaType? reportForm)) {
 					throw new InvalidOperationException("The report endpoint must declare a multipart request body.");
 				}
-				reportBody.Description = "metadata is a JSON string containing userId, optional aedId, and photoUrl when image is omitted. "
+				reportBody.Description = "metadata is a JSON string containing userId, required nonblank description of the device placement, optional aedId, and photoUrl when image is omitted. "
+					+ "Optional availabilityStartHour (0-23), availabilityEndHour (0-24), and isPubliclyAccessible may be null or omitted. "
+					+ "Optional rating must be an integer from 0 to 100 inclusive, or null when unknown. "
+					+ "Hour bounds may be supplied independently; complete ranges must differ, support overnight hours, and use 0-24 for all-day access. "
 					+ "image is an optional PNG/JPEG file up to 5 MiB. Supply exactly one image source. "
 					+ "Status and timestamps are server-controlled; unknown JSON fields are rejected.";
 				reportForm.Examples = new Dictionary<String, IOpenApiExample> {
 					["existingImage"] = Example("Report with an existing image path", new {
-						metadata = JsonSerializer.Serialize(new CreateAEDReportRequest(1, 1, "/photos/existing-aed.jpg"), JsonOptions)
+						metadata = JsonSerializer.Serialize(new CreateAEDReportRequest(
+							1, 1, "/photos/existing-aed.jpg", "On the wall beside reception.", 8, 20, true, 85), JsonOptions)
 					}),
 					["upload"] = Example("Metadata for an image upload; select a file in image", new {
-						metadata = JsonSerializer.Serialize(new CreateAEDReportRequest(1, null, null), JsonOptions)
+						metadata = JsonSerializer.Serialize(new CreateAEDReportRequest(
+							1, null, null, "Inside the entrance lobby.", null, null, null, null), JsonOptions)
 					})
 				};
 				ResponseContent(operation, "201", "Report created. Uploaded photoUrl values are relative filenames, not public download URLs.")
 					.Examples = new Dictionary<String, IOpenApiExample> {
 						["created"] = Example("Created report", new AEDReportResponse(
 							42, 1, 1, "b64c86c6c07c493cad9d97015fcb5811.png",
+							"On the wall beside reception.", 8, 20, true, 85,
 							new DateTime(2026, 11, 22, 8, 0, 0, DateTimeKind.Utc),
 							new DateTime(2026, 11, 22, 8, 0, 0, DateTimeKind.Utc), ReportStatus.Submitted))
 					};

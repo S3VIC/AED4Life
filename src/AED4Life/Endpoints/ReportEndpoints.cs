@@ -20,7 +20,10 @@ public static class ReportEndpoints {
 		group.MapPost("", CreateAsync)
 			.WithName("CreateAEDReport")
 			.WithSummary("Create an AED report with an optional image")
-			.WithDescription("Send multipart/form-data with a metadata JSON string containing userId, optional aedId, and photoUrl when no image is uploaded. "
+			.WithDescription("Send multipart/form-data with a metadata JSON string containing userId, a required nonblank device-placement description, optional aedId, and photoUrl when no image is uploaded. "
+				+ "Optional availabilityStartHour (0-23) and availabilityEndHour (0-24) support overnight ranges and may be supplied independently; if both are supplied, they must differ. "
+				+ "Use 0-24 for all-day availability. Optional isPubliclyAccessible is true/false, or null when unknown. "
+				+ "Optional rating must be an integer from 0 to 100 inclusive; omit it or use null when unknown. "
 				+ "Alternatively upload a nonempty PNG/JPEG in image (maximum 5 MiB); do not provide both an image and a nonblank photoUrl. "
 				+ "File signatures are checked and original filenames are ignored. Uploaded images are stored outside the database; photoUrl then contains a generated filename relative to ReportImages:Directory. "
 				+ "External photoUrl values are not fetched or checked for file contents. The server sets Created/LastUpdated to UTC and Status to Submitted. "
@@ -47,7 +50,7 @@ public static class ReportEndpoints {
 			request = JsonSerializer.Deserialize<CreateAEDReportRequest>(metadata, JsonOptions);
 		} catch (JsonException) {
 			return TypedResults.ValidationProblem(new Dictionary<String, String[]> {
-				["metadata"] = ["Metadata must be a JSON object containing only userId, aedId, and photoUrl, with valid field types."]
+				["metadata"] = ["Metadata must be a JSON object containing only userId, aedId, photoUrl, description, availabilityStartHour, availabilityEndHour, isPubliclyAccessible, and rating, with valid field types."]
 			});
 		}
 		if (request is null) {
@@ -55,6 +58,22 @@ public static class ReportEndpoints {
 		}
 
 		Dictionary<String, String[]> errors = [];
+		String? description = request.Description?.Trim();
+		if (String.IsNullOrWhiteSpace(description)) {
+			errors["description"] = ["A nonblank description of the device placement is required."];
+		}
+		if (request.Rating is < 0 or > 100) {
+			errors["rating"] = ["Rating must be an integer between 0 and 100."];
+		}
+		if (request.AvailabilityStartHour is < 0 or > 23) {
+			errors["availabilityStartHour"] = ["The opening hour must be between 0 and 23."];
+		}
+		if (request.AvailabilityEndHour is < 0 or > 24) {
+			errors["availabilityEndHour"] = ["The closing hour must be between 0 and 24."];
+		}
+		if (request.AvailabilityStartHour is not null && request.AvailabilityStartHour == request.AvailabilityEndHour) {
+			errors["availabilityEndHour"] = ["Opening and closing hours must differ. Use 0 and 24 for all-day availability."];
+		}
 		if (request.UserId is null or <= 0) {
 			errors["userId"] = ["A positive userId is required."];
 		}
@@ -92,6 +111,11 @@ public static class ReportEndpoints {
 				UserId = request.UserId!.Value,
 				AEDId = request.AEDId,
 				PhotoUrl = photoUrl!,
+				Description = description!,
+				AvailabilityStartHour = request.AvailabilityStartHour,
+				AvailabilityEndHour = request.AvailabilityEndHour,
+				IsPubliclyAccessible = request.IsPubliclyAccessible,
+				Rating = request.Rating,
 				Created = now,
 				LastUpdated = now,
 				Status = ReportStatus.Submitted
@@ -100,7 +124,9 @@ public static class ReportEndpoints {
 			await database.SaveChangesAsync(cancellationToken);
 			persisted = true;
 			return TypedResults.Created(String.Empty, new AEDReportResponse(
-				report.Id, report.UserId, report.AEDId, report.PhotoUrl, now, now, report.Status));
+				report.Id, report.UserId, report.AEDId, report.PhotoUrl,
+				report.Description, report.AvailabilityStartHour, report.AvailabilityEndHour, report.IsPubliclyAccessible, report.Rating,
+				now, now, report.Status));
 		} catch (ReportImageValidationException exception) {
 			if (exception.StatusCode == StatusCodes.Status400BadRequest) {
 				return TypedResults.ValidationProblem(new Dictionary<String, String[]> { ["image"] = [exception.Message] });

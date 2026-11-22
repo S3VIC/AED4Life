@@ -63,7 +63,7 @@ is available at `https://localhost:7231/openapi/v1.json`.
 All current endpoints include descriptions and response examples:
 `GET /api/aed/owners`, `GET /api/aed/nearest`, `GET /api/aed/nearest({count})`, `GET /api/translations/profiles`,
 `GET /api/translations/profiles({name})`, `POST /api/translations/profiles`,
-`POST /api/translations/profiles({name})/import`, and
+`POST /api/translations/profiles({name})/import`,
 `POST /api/zgloszenia`, and `GET /weatherforecast`. The profile endpoint also includes an editable JSON
 request example and examples of `400` validation and `409` duplicate-name errors.
 Scalar generates request snippets and lets you send requests to the running app;
@@ -163,7 +163,9 @@ Registration/login endpoints are still not implemented by this seed.
 
 `AEDReports` contains an auto-generated `Int64` `Id`, required author `UserId`
 referencing `Users`, optional `AEDId` referencing `AEDs`, required nonblank `PhotoUrl`
-(a URL or file path, not image bytes), required `Created` and `LastUpdated`
+(a URL or file path, not image bytes), required nonblank device-placement
+`Description`, optional `AvailabilityStartHour`/`AvailabilityEndHour`, optional
+`IsPubliclyAccessible`, required `Created` and `LastUpdated`
 timestamps, and required `Status`: `Submitted=0`, `UnderReview=1`,
 `Confirmed=2`, `Rejected=3`. A report may concern an AED not yet in the database.
 Reports can upload photos using the endpoint below; seeded photo paths are placeholders.
@@ -173,6 +175,11 @@ contains bytes, or is a valid image. Uploaded files are checked separately by th
 `011-required-report-photo.sql` stops initialization if any existing report has
 an invalid path. Supply valid image paths for those reports and rerun the
 initializer; no paths or reports are fabricated, deleted, or replaced by the upgrade.
+`012-report-placement-metadata.sql` adds the placement fields. Existing reports
+without a nonblank description receive the explicit placeholder
+`Legacy report: device placement description was not provided.`
+Existing descriptions, opening hours, accessibility flags, and other report data
+are preserved on reruns; new optional fields remain `NULL` when unknown.
 As with AED timestamps, application code supplies and updates report timestamps
 in UTC, with microsecond database precision.
 
@@ -181,21 +188,31 @@ addresses. SQL checks reject undefined user types and report statuses. These
 tables and their EF entities do not add authentication or authorization.
 
 For an existing database, run either initializer below to apply
-`009-users-and-aed-reports.sql`, `010-user-password-hash.sql`, and
-`011-required-report-photo.sql`, then seed empty tables without replacing
+`009-users-and-aed-reports.sql`, `010-user-password-hash.sql`,
+`011-required-report-photo.sql`, and `012-report-placement-metadata.sql`, then seed empty tables without replacing
 existing records.
 
 ### Creating a report
 
 `POST /api/zgloszenia` accepts **multipart/form-data**, including when there is
 no uploaded file. The `metadata` field is a JSON object encoded as a string:
-required positive `userId`, optional positive `aedId`, and optional `photoUrl`.
+required positive `userId`, required nonblank `description` of where the device
+is or could be placed, optional positive `aedId`, and optional `photoUrl`.
 The referenced user/AED must exist. Provide exactly one image source: a
 nonblank `photoUrl` or the optional file field `image`.
+Of the new placement fields, only `description` is mandatory; the existing
+author and photo requirements are unchanged. Descriptions are trimmed.
+Optional `availabilityStartHour` is an integer from 0 to 23, and
+`availabilityEndHour` is an integer from 0 to 24. Either may be omitted or null
+independently. Complete ranges must have different bounds; overnight ranges
+such as 22-6 are allowed, and 0-24 means all day. Optional
+`isPubliclyAccessible` is `true` when anyone can access the device, `false` when
+access is restricted, or null/omitted when unknown. These are report details;
+submitting them does not automatically update an existing AED.
 
 ```powershell
 curl.exe "https://localhost:7231/api/zgloszenia" `
-  --form 'metadata={"userId":1,"aedId":1}' `
+  --form 'metadata={"userId":1,"aedId":1,"description":"On the wall beside reception.","availabilityStartHour":8,"availabilityEndHour":20,"isPubliclyAccessible":true}' `
   --form 'image=@C:\photos\aed.png'
 ```
 
@@ -203,7 +220,7 @@ Without uploading a file:
 
 ```powershell
 curl.exe "https://localhost:7231/api/zgloszenia" `
-  --form 'metadata={"userId":1,"photoUrl":"https://example.test/photos/aed.jpg"}'
+  --form 'metadata={"userId":1,"description":"Inside the main entrance.","photoUrl":"https://example.test/photos/aed.jpg"}'
 ```
 
 Uploads must be nonempty PNG/JPEG files, at most **5 MiB (5,242,880 bytes)**.
@@ -216,7 +233,8 @@ to 5 MiB plus 128 KiB of form overhead.
 
 The server sets both timestamps to the current UTC time and status to
 `Submitted`. A successful request returns `201` with `id`, `userId`, `aedId`,
-`photoUrl`, `created`, `lastUpdated`, and `status`. Uploaded `photoUrl` values
+`photoUrl`, `description`, `availabilityStartHour`, `availabilityEndHour`,
+`isPubliclyAccessible`, `created`, `lastUpdated`, and `status`. Uploaded `photoUrl` values
 are filenames relative to the configured storage directory, **not public image
 URLs**. No image-download endpoint is exposed. Supplied external paths/URLs
 are trimmed but never fetched; their file contents cannot be validated here.
@@ -274,7 +292,8 @@ Both scripts create missing tables, apply `003-unique-owner-regon.sql`,
 `004-translation-profiles.sql`, `005-aed-availability.sql`,
 `006-aed-coordinates.sql`, `007-nullable-import-data.sql`,
 `008-aed-owner.sql`, `009-users-and-aed-reports.sql`,
-`010-user-password-hash.sql`, and `011-required-report-photo.sql`, then execute
+`010-user-password-hash.sql`, `011-required-report-photo.sql`, and
+`012-report-placement-metadata.sql`, then execute
 `002-populate-tables.sql`.
 Each location/AED/owner/user/report sample-data table receives rows only when completely
 empty; partially populated tables are left unchanged except that a missing

@@ -183,6 +183,32 @@ WHERE PhotoUrl IS NULL OR PhotoUrl NOT REGEXP '[^[:space:]]';
     Invoke-TestSql ("USE checks_reports_upgrade;`n" + $photoUpgrade + "`n" + $photoUpgrade) | Out-Null
     Assert ((Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;') -ceq $provisionedReports) 'Photo upgrade modified valid paths or other report data.'
     Write-Host 'PASS: Required photo-path upgrade stops on invalid legacy paths, preserves reports, and succeeds repeatably after provisioning.'
+    $placementUpgrade = Get-Content -LiteralPath (Join-Path $projectDirectory 'database\012-report-placement-metadata.sql') -Raw -Encoding UTF8
+    Invoke-TestSql @'
+ALTER TABLE checks_reports_upgrade.AEDReports
+    DROP CONSTRAINT CK_AEDReports_Description, DROP CONSTRAINT CK_AEDReports_AvailabilityHours,
+    DROP CONSTRAINT CK_AEDReports_IsPubliclyAccessible,
+    DROP COLUMN Description, DROP COLUMN AvailabilityStartHour, DROP COLUMN AvailabilityEndHour,
+    DROP COLUMN IsPubliclyAccessible;
+'@ | Out-Null
+    $legacyReports = Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;'
+    Invoke-TestSql ("USE checks_reports_upgrade;`n" + $placementUpgrade) | Out-Null
+    Assert ((Invoke-TestSql @'
+SELECT Id,UserId,AEDId,PhotoUrl,Created,LastUpdated,Status FROM checks_reports_upgrade.AEDReports ORDER BY Id;
+'@) -ceq $legacyReports) 'Placement upgrade changed legacy report fields.'
+    Assert ((Invoke-TestSql @'
+SELECT COUNT(*) FROM checks_reports_upgrade.AEDReports
+WHERE Description='Legacy report: device placement description was not provided.'
+AND AvailabilityStartHour IS NULL AND AvailabilityEndHour IS NULL AND IsPubliclyAccessible IS NULL;
+'@) -eq '4') 'Placement upgrade did not backfill explicit legacy descriptions with unknown optional data.'
+    Invoke-TestSql @'
+UPDATE checks_reports_upgrade.AEDReports SET Description='Documented placement beside reception.',
+AvailabilityStartHour=22,AvailabilityEndHour=6,IsPubliclyAccessible=0 WHERE Status=0;
+'@ | Out-Null
+    $documentedReports = Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;'
+    Invoke-TestSql ("USE checks_reports_upgrade;`n" + $placementUpgrade + "`n" + $placementUpgrade) | Out-Null
+    Assert ((Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;') -ceq $documentedReports) 'Repeated placement upgrade replaced known descriptions or optional data.'
+    Write-Host 'PASS: Placement upgrade preserves legacy reports, backfills explicit descriptions, and preserves known metadata on reruns.'
     $reportChecks = Invoke-TestSql @'
 START TRANSACTION;
 SET @PasswordHash=(SELECT PasswordHash FROM Users ORDER BY Id LIMIT 1);
@@ -191,12 +217,16 @@ SELECT 'report-check', 'Test', 'User', '1999-02-28', MIN(Id), 1, @PasswordHash F
 SET @UserId=LAST_INSERT_ID();
 SET @AddressId=(SELECT AddressId FROM Users WHERE Id=@UserId);
 SET @AEDId=(SELECT MIN(Id) FROM AEDs);
-INSERT INTO AEDReports (UserId, AEDId, PhotoUrl, Created, LastUpdated, Status)
-VALUES (@UserId, NULL, '/photos/new-aed.jpg', '2026-01-01 10:00:00.123456', '2026-01-01 10:00:00.123456', 0),
-       (@UserId, @AEDId, '/photos/test.jpg', '2026-01-01 10:00:00.123456', '2026-01-02 11:00:00.654321', 1);
+INSERT INTO AEDReports (UserId, AEDId, PhotoUrl, Created, LastUpdated, Status,
+    Description, AvailabilityStartHour, AvailabilityEndHour, IsPubliclyAccessible)
+VALUES (@UserId, NULL, '/photos/new-aed.jpg', '2026-01-01 10:00:00.123456', '2026-01-01 10:00:00.123456', 0,
+        'Beside the main entrance.',9,NULL,NULL),
+       (@UserId, @AEDId, '/photos/test.jpg', '2026-01-01 10:00:00.123456', '2026-01-02 11:00:00.654321', 1,
+        'Inside the staff room.',22,6,0);
 SELECT COUNT(*) FROM AEDReports WHERE UserId=@UserId AND AEDId IS NULL AND PhotoUrl='/photos/new-aed.jpg';
 SELECT COUNT(*) FROM AEDReports WHERE UserId=@UserId AND AEDId=@AEDId AND PhotoUrl='/photos/test.jpg'
-AND MICROSECOND(Created)=123456 AND MICROSECOND(LastUpdated)=654321 AND Status=1;
+AND MICROSECOND(Created)=123456 AND MICROSECOND(LastUpdated)=654321 AND Status=1
+AND Description='Inside the staff room.' AND AvailabilityStartHour=22 AND AvailabilityEndHour=6 AND IsPubliclyAccessible=0;
 SET @Rejected=0;
 DELIMITER //
 BEGIN NOT ATOMIC
@@ -223,7 +253,16 @@ BEGIN NOT ATOMIC
     UPDATE AEDReports SET PhotoUrl='' WHERE UserId=@UserId;
     UPDATE AEDReports SET PhotoUrl='   ' WHERE UserId=@UserId;
     UPDATE AEDReports SET PhotoUrl=CONCAT(CHAR(9), CHAR(10), CHAR(13)) WHERE UserId=@UserId;
-    INSERT INTO AEDReports (UserId, Created, LastUpdated, Status) VALUES (@UserId, NOW(6), NOW(6), 0);
+    INSERT INTO AEDReports (UserId, Description, Created, LastUpdated, Status) VALUES (@UserId, 'Test placement.', NOW(6), NOW(6), 0);
+    UPDATE AEDReports SET Description=NULL WHERE UserId=@UserId;
+    UPDATE AEDReports SET Description='' WHERE UserId=@UserId;
+    UPDATE AEDReports SET Description=CONCAT(' ', CHAR(9), CHAR(10)) WHERE UserId=@UserId;
+    UPDATE AEDReports SET AvailabilityStartHour=-1 WHERE UserId=@UserId;
+    UPDATE AEDReports SET AvailabilityStartHour=24 WHERE UserId=@UserId;
+    UPDATE AEDReports SET AvailabilityEndHour=-1 WHERE UserId=@UserId;
+    UPDATE AEDReports SET AvailabilityEndHour=25 WHERE UserId=@UserId;
+    UPDATE AEDReports SET AvailabilityStartHour=10, AvailabilityEndHour=10 WHERE UserId=@UserId;
+    UPDATE AEDReports SET IsPubliclyAccessible=2 WHERE UserId=@UserId;
     DELETE FROM Users WHERE Id=@UserId;
     DELETE FROM AEDs WHERE Id=@AEDId;
     DELETE FROM Addresses WHERE Id=@AddressId;
@@ -232,7 +271,7 @@ DELIMITER ;
 SELECT @Rejected;
 ROLLBACK;
 '@
-    Assert ($reportChecks -ceq "1`n1`n25") 'User/report constraints, required image paths, date precision, or deletion restrictions are incorrect.'
+    Assert ($reportChecks -ceq "1`n1`n34") 'User/report constraints, required descriptions/photo paths, optional hours/accessibility, date precision, or deletion restrictions are incorrect.'
     Write-Host 'PASS: Required password hashes, explicit legacy provisioning failure/recovery, credential preservation, and repeatable password upgrade.'
     Write-Host 'PASS: Users/reports schema upgrade, sample types/statuses, required personal data/photo paths, unique usernames, optional AEDs, and restricted relationships.'
     $before = Get-DataSnapshot
@@ -335,28 +374,55 @@ SELECT @RejectedCoordinates;
 
     $userId = [Int64] (Invoke-TestSql 'SELECT MIN(Id) FROM Users;')
     $aedId = [Int64] (Invoke-TestSql 'SELECT MIN(Id) FROM AEDs;')
-    $reportMetadata = @{ userId = $userId; aedId = $aedId } | ConvertTo-Json -Compress
+    $reportMetadata = @{
+        userId = $userId; aedId = $aedId; description = '  On the wall beside reception.  '
+        availabilityStartHour = 22; availabilityEndHour = 6; isPubliclyAccessible = $false
+    } | ConvertTo-Json -Compress
     $png = [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0AAAAABJRU5ErkJggg==')
     $report = Invoke-Report $reportMetadata -Image $png -FileName '..\..\untrusted.html'
     Assert ($report.userId -eq $userId -and $report.aedId -eq $aedId -and $report.status -eq 'Submitted') 'Report response has incorrect metadata or status.'
+    Assert ($report.description -eq 'On the wall beside reception.' -and $report.availabilityStartHour -eq 22 -and $report.availabilityEndHour -eq 6 -and $report.isPubliclyAccessible -eq $false) 'Report response lost the trimmed description, overnight hours, or false accessibility.'
     Assert ($report.photoUrl -cmatch '^[0-9a-f]{32}\.png$') 'Upload did not generate a safe filename based on the image signature.'
     Assert ([Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $imageDirectory $report.photoUrl))) -ceq [Convert]::ToBase64String($png)) 'Uploaded image bytes were not persisted intact outside the database.'
-    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDReports WHERE Id=$($report.id) AND UserId=$userId AND AEDId=$aedId AND PhotoUrl='$($report.photoUrl)' AND Status=0 AND Created=LastUpdated AND Created BETWEEN UTC_TIMESTAMP()-INTERVAL 1 MINUTE AND UTC_TIMESTAMP()+INTERVAL 1 MINUTE;") -eq '1') 'Report was not persisted with server-controlled UTC timestamps and image path.'
-    $urlMetadata = @{ userId = $userId; photoUrl = '  https://example.invalid/aed.jpg  ' } | ConvertTo-Json -Compress
+    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDReports WHERE Id=$($report.id) AND UserId=$userId AND AEDId=$aedId AND PhotoUrl='$($report.photoUrl)' AND Description='On the wall beside reception.' AND AvailabilityStartHour=22 AND AvailabilityEndHour=6 AND IsPubliclyAccessible=0 AND Status=0 AND Created=LastUpdated AND Created BETWEEN UTC_TIMESTAMP()-INTERVAL 1 MINUTE AND UTC_TIMESTAMP()+INTERVAL 1 MINUTE;") -eq '1') 'Report placement metadata, UTC timestamps, or image path were not persisted.'
+    $urlMetadata = @{ userId = $userId; photoUrl = '  https://example.invalid/aed.jpg  '; description = 'By the entrance.' } | ConvertTo-Json -Compress
     $urlReport = Invoke-Report $urlMetadata
     Assert ($null -eq $urlReport.aedId -and $urlReport.photoUrl -eq 'https://example.invalid/aed.jpg') 'Metadata-only report did not preserve optional AED/trimmed external photo URL.'
+    Assert ($urlReport.description -eq 'By the entrance.' -and $null -eq $urlReport.availabilityStartHour -and $null -eq $urlReport.availabilityEndHour -and $null -eq $urlReport.isPubliclyAccessible) 'Omitted report hours/accessibility were not kept unknown.'
+    foreach ($hours in @(@(0,24), @(8,$null), @($null,18))) {
+        $optionalMetadata = @{
+            userId = $userId; photoUrl = '/photos/opening-hours.jpg'; description = 'Lobby wall.'
+            availabilityStartHour = $hours[0]; availabilityEndHour = $hours[1]; isPubliclyAccessible = $true
+        } | ConvertTo-Json -Compress
+        $optionalReport = Invoke-Report $optionalMetadata
+        Assert ($optionalReport.availabilityStartHour -eq $hours[0] -and $optionalReport.availabilityEndHour -eq $hours[1] -and $optionalReport.isPubliclyAccessible -eq $true) 'All-day/partial opening hours or public accessibility were rejected.'
+    }
     $jpeg = [Byte[]] @(255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1, 255, 217)
     $jpegReport = Invoke-Report $reportMetadata -Image $jpeg
     Assert ($jpegReport.photoUrl -cmatch '^[0-9a-f]{32}\.jpg$') 'JPEG signatures were not recognized independently of the supplied filename.'
     $beforeReports = Get-DataSnapshot
     $filesBefore = @([IO.Directory]::GetFiles($imageDirectory)).Count
     foreach ($invalidMetadata in @('null', '[]', '{', '{}',
-        '{"userId":-1,"photoUrl":"/a.jpg"}', '{"userId":9223372036854775807,"photoUrl":"/a.jpg"}',
-        "{`"userId`":$userId,`"aedId`":-1,`"photoUrl`":`"/a.jpg`"}",
-        "{`"userId`":$userId,`"aedId`":9223372036854775807,`"photoUrl`":`"/a.jpg`"}",
-        "{`"userId`":$userId,`"status`":`"Confirmed`",`"photoUrl`":`"/a.jpg`"}",
-        "{`"userId`":$userId,`"photoUrl`":`"  `"}", (' ' * 16385))) {
+        '{"userId":-1,"photoUrl":"/a.jpg","description":"Lobby."}', '{"userId":9223372036854775807,"photoUrl":"/a.jpg","description":"Lobby."}',
+        "{`"userId`":$userId,`"aedId`":-1,`"photoUrl`":`"/a.jpg`",`"description`":`"Lobby.`"}",
+        "{`"userId`":$userId,`"aedId`":9223372036854775807,`"photoUrl`":`"/a.jpg`",`"description`":`"Lobby.`"}",
+        "{`"userId`":$userId,`"status`":`"Confirmed`",`"photoUrl`":`"/a.jpg`",`"description`":`"Lobby.`"}",
+        "{`"userId`":$userId,`"photoUrl`":`"  `",`"description`":`"Lobby.`"}", (' ' * 16385))) {
         Invoke-Report $invalidMetadata -ExpectedStatus 400 | Out-Null
+    }
+    foreach ($invalidDescription in @($null, '', " `t`n")) {
+        $invalidMetadata = @{ userId = $userId; photoUrl = '/a.jpg'; description = $invalidDescription } | ConvertTo-Json -Compress
+        $failure = Invoke-Report $invalidMetadata -ExpectedStatus 400 | ConvertFrom-Json
+        Assert ($null -ne $failure.errors.description) 'A blank description did not return a description-specific validation error.'
+    }
+    Invoke-Report (@{ userId = $userId; photoUrl = '/a.jpg' } | ConvertTo-Json -Compress) -ExpectedStatus 400 | Out-Null
+    foreach ($invalidOptional in @(
+        @{ availabilityStartHour = -1 }, @{ availabilityStartHour = 24 },
+        @{ availabilityEndHour = -1 }, @{ availabilityEndHour = 25 },
+        @{ availabilityStartHour = 8; availabilityEndHour = 8 },
+        @{ isPubliclyAccessible = 'yes' }, @{ isPubliclyAccessible = 2 })) {
+        $invalidMetadata = @{ userId = $userId; photoUrl = '/a.jpg'; description = 'Lobby.' } + $invalidOptional
+        Invoke-Report ($invalidMetadata | ConvertTo-Json -Compress) -ExpectedStatus 400 | Out-Null
     }
     Invoke-Report $urlMetadata -Image $png -ExpectedStatus 400 | Out-Null
     Invoke-Report $reportMetadata -Image ([Byte[]]::new(0)) -ExpectedStatus 400 | Out-Null

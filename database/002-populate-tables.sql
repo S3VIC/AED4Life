@@ -135,7 +135,8 @@ WHERE NOT EXISTS (SELECT 1 FROM `Users` WHERE `Username` = 'admin')
 ORDER BY address.Id
 LIMIT 1;
 
-INSERT INTO `AEDReports` (`UserId`, `AEDId`, `PhotoUrl`, `Created`, `LastUpdated`, `Status`)
+INSERT INTO `AEDReports` (`UserId`, `AEDId`, `PhotoUrl`, `Created`, `LastUpdated`, `Status`,
+    `Description`, `AvailabilityStartHour`, `AvailabilityEndHour`, `IsPubliclyAccessible`, `Rating`)
 WITH UserSlots AS (
     SELECT Id, ROW_NUMBER() OVER (ORDER BY Id) AS Slot, COUNT(*) OVER () AS SlotCount
     FROM `Users`
@@ -143,12 +144,18 @@ WITH UserSlots AS (
     SELECT Id, ROW_NUMBER() OVER (ORDER BY Id) AS Slot, COUNT(*) OVER () AS SlotCount
     FROM `AEDs`
 )
-SELECT user.Id, aed.Id, sample.PhotoUrl, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), sample.Status
+SELECT user.Id, aed.Id, sample.PhotoUrl, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), sample.Status,
+    sample.Description, sample.AvailabilityStartHour, sample.AvailabilityEndHour, sample.IsPubliclyAccessible, sample.Rating
 FROM (
-    SELECT 1 AS UserSlot, 1 AS AEDSlot, '/images/demo-aed.jpg' AS PhotoUrl, 0 AS Status
-    UNION ALL SELECT 2, 2, '/images/demo-aed-under-review.jpg', 1
-    UNION ALL SELECT 3, 3, '/images/demo-aed-confirmed.jpg', 2
-    UNION ALL SELECT 4, NULL, '/images/demo-aed-rejected.jpg', 3
+    SELECT 1 AS UserSlot, 1 AS AEDSlot, '/images/demo-aed.jpg' AS PhotoUrl, 0 AS Status,
+        'In the entrance lobby, on the wall beside reception.' AS Description,
+        0 AS AvailabilityStartHour, 24 AS AvailabilityEndHour, 1 AS IsPubliclyAccessible, 85 AS Rating
+    UNION ALL SELECT 2, 2, '/images/demo-aed-under-review.jpg', 1,
+        'Inside the staff room, beside the first-aid cabinet.', 8, 20, 0, 60
+    UNION ALL SELECT 3, 3, '/images/demo-aed-confirmed.jpg', 2,
+        'At the overnight service entrance, next to the security desk.', 22, 6, 1, 100
+    UNION ALL SELECT 4, NULL, '/images/demo-aed-rejected.jpg', 3,
+        'Suggested location: the main entrance of the community centre.', NULL, NULL, NULL, NULL
 ) AS sample
 JOIN UserSlots AS user ON user.Slot = MOD(sample.UserSlot - 1, user.SlotCount) + 1
 LEFT JOIN AEDSlots AS aed ON aed.Slot = MOD(sample.AEDSlot - 1, aed.SlotCount) + 1
