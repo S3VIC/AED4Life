@@ -110,6 +110,7 @@ public sealed class AED4LifeDbContext(DbContextOptions<AED4LifeDbContext> option
 		modelBuilder.Entity<AEDReport>(entity => {
 			entity.ToTable("AEDReports", table => {
 				table.HasCheckConstraint("CK_AEDReports_Status", "`Status` IN (0, 1, 2, 3)");
+				table.HasCheckConstraint("CK_AEDReports_PhotoUrl", "`PhotoUrl` REGEXP '[^[:space:]]'");
 			});
 			entity.HasKey(report => report.Id);
 			entity.Property(report => report.Id).ValueGeneratedOnAdd();

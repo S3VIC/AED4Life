@@ -2,6 +2,7 @@ using AED4Life.DataModel;
 using AED4Life.DataModel.Entities;
 using AED4Life.Documentation;
 using AED4Life.Endpoints;
+using AED4Life.Storage;
 using AED4Life.Translation;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,7 @@ if (String.IsNullOrWhiteSpace(connectionString)) {
 builder.Services.AddDbContext<AED4LifeDbContext>(options =>
 	options.UseMySql(connectionString, new MariaDbServerVersion(new Version(12, 3, 3))));
 builder.Services.AddScoped<TranslationEngine>();
+builder.Services.AddSingleton<ReportImageStorage>();
 builder.Services.Configure<PasswordHasherOptions>(options => options.IterationCount = 210_000);
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 
@@ -29,7 +31,7 @@ builder.Services.AddOpenApi(options => {
 		document.Info = new OpenApiInfo {
 			Title = "AED4Life API",
 			Version = "v1",
-			Description = "AED owner lookup, reusable translation profiles, and transactional CSV import. Includes a sample weather endpoint."
+			Description = "AED lookup, reports with image uploads, reusable translation profiles, and transactional CSV import. Includes a sample weather endpoint."
 		};
 		return Task.CompletedTask;
 	});
@@ -48,6 +50,7 @@ app.UseHttpsRedirection();
 
 app.MapAedEndpoints();
 app.MapTranslationEndpoints();
+app.MapReportEndpoints();
 
 String[] summaries = new[] {
 	"Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"

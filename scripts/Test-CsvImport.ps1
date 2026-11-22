@@ -10,6 +10,7 @@ $password = [Guid]::NewGuid().ToString('N')
 $app = $null
 $client = $null
 $created = $false
+$imageDirectory = Join-Path ([IO.Path]::GetTempPath()) ($container + '-images')
 $previousOutputEncoding = $OutputEncoding
 
 function Assert([Boolean] $Condition, [String] $Message) {
@@ -69,6 +70,25 @@ function Invoke-Nearest([String] $Query, [Int32] $ExpectedStatus = 200, [String]
         if ($ExpectedStatus -eq 200) { return $body | ConvertFrom-Json }
         return $body
     } finally { $response.Dispose() }
+}
+
+function Invoke-Report([String] $Metadata, [Byte[]] $Image = $null, [Int32] $ExpectedStatus = 201, [String] $FileName = 'report.png') {
+    $form = [System.Net.Http.MultipartFormDataContent]::new()
+    try {
+        $form.Add([System.Net.Http.StringContent]::new($Metadata, [Text.Encoding]::UTF8), 'metadata')
+        if ($null -ne $Image) {
+            $content = [System.Net.Http.ByteArrayContent]::new($Image)
+            $content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::new('image/png')
+            $form.Add($content, 'image', $FileName)
+        }
+        $response = $client.PostAsync("$base/api/zgloszenia", $form).GetAwaiter().GetResult()
+        try {
+            $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            Assert ([Int32] $response.StatusCode -eq $ExpectedStatus) "Expected report status $ExpectedStatus, received $([Int32] $response.StatusCode): $body"
+            if ($ExpectedStatus -eq 201) { return $body | ConvertFrom-Json }
+            return $body
+        } finally { $response.Dispose() }
+    } finally { $form.Dispose() }
 }
 
 try {
@@ -143,6 +163,26 @@ SET u.PasswordHash=original.PasswordHash;
 SELECT COUNT(*) FROM checks_reports_upgrade.Users u JOIN checks.Users original ON u.Id=original.Id
 WHERE u.PasswordHash=original.PasswordHash AND u.Username=original.Username AND u.BirthDate=original.BirthDate;
 '@) -eq '4') 'Password upgrade changed provisioned credentials or existing user data.'
+    $photoUpgrade = Get-Content -LiteralPath (Join-Path $projectDirectory 'database\011-required-report-photo.sql') -Raw -Encoding UTF8
+    Invoke-TestSql @'
+INSERT INTO checks_reports_upgrade.AEDReports SELECT * FROM AEDReports;
+ALTER TABLE checks_reports_upgrade.AEDReports
+    DROP CONSTRAINT CK_AEDReports_PhotoUrl, MODIFY COLUMN PhotoUrl LONGTEXT NULL;
+UPDATE checks_reports_upgrade.AEDReports
+SET PhotoUrl=CASE Status WHEN 0 THEN NULL WHEN 1 THEN '' WHEN 2 THEN CONCAT(' ', CHAR(9), CHAR(10)) ELSE PhotoUrl END;
+'@ | Out-Null
+    $oldReports = Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;'
+    $failure = Invoke-TestSql ("USE checks_reports_upgrade;`n" + $photoUpgrade) -ExpectFailure
+    Assert ($failure -like '*Provide a nonblank AEDReports.PhotoUrl for every existing report*') 'Photo upgrade did not explain required image-path provisioning.'
+    Assert ((Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;') -ceq $oldReports) 'Failed photo upgrade changed existing reports.'
+    Invoke-TestSql @'
+UPDATE checks_reports_upgrade.AEDReports SET PhotoUrl=CONCAT('/photos/provisioned-', Id, '.jpg')
+WHERE PhotoUrl IS NULL OR PhotoUrl NOT REGEXP '[^[:space:]]';
+'@ | Out-Null
+    $provisionedReports = Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;'
+    Invoke-TestSql ("USE checks_reports_upgrade;`n" + $photoUpgrade + "`n" + $photoUpgrade) | Out-Null
+    Assert ((Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;') -ceq $provisionedReports) 'Photo upgrade modified valid paths or other report data.'
+    Write-Host 'PASS: Required photo-path upgrade stops on invalid legacy paths, preserves reports, and succeeds repeatably after provisioning.'
     $reportChecks = Invoke-TestSql @'
 START TRANSACTION;
 SET @PasswordHash=(SELECT PasswordHash FROM Users ORDER BY Id LIMIT 1);
@@ -152,15 +192,15 @@ SET @UserId=LAST_INSERT_ID();
 SET @AddressId=(SELECT AddressId FROM Users WHERE Id=@UserId);
 SET @AEDId=(SELECT MIN(Id) FROM AEDs);
 INSERT INTO AEDReports (UserId, AEDId, PhotoUrl, Created, LastUpdated, Status)
-VALUES (@UserId, NULL, NULL, '2026-01-01 10:00:00.123456', '2026-01-01 10:00:00.123456', 0),
+VALUES (@UserId, NULL, '/photos/new-aed.jpg', '2026-01-01 10:00:00.123456', '2026-01-01 10:00:00.123456', 0),
        (@UserId, @AEDId, '/photos/test.jpg', '2026-01-01 10:00:00.123456', '2026-01-02 11:00:00.654321', 1);
-SELECT COUNT(*) FROM AEDReports WHERE UserId=@UserId AND AEDId IS NULL AND PhotoUrl IS NULL;
+SELECT COUNT(*) FROM AEDReports WHERE UserId=@UserId AND AEDId IS NULL AND PhotoUrl='/photos/new-aed.jpg';
 SELECT COUNT(*) FROM AEDReports WHERE UserId=@UserId AND AEDId=@AEDId AND PhotoUrl='/photos/test.jpg'
 AND MICROSECOND(Created)=123456 AND MICROSECOND(LastUpdated)=654321 AND Status=1;
 SET @Rejected=0;
 DELIMITER //
 BEGIN NOT ATOMIC
-    DECLARE CONTINUE HANDLER FOR 1048, 1062, 1451, 1452, 4025 SET @Rejected=@Rejected+1;
+    DECLARE CONTINUE HANDLER FOR 1048, 1062, 1364, 1451, 1452, 4025 SET @Rejected=@Rejected+1;
     UPDATE Users SET Type=4 WHERE Id=@UserId;
     UPDATE Users SET FirstName=NULL WHERE Id=@UserId;
     UPDATE Users SET LastName=NULL WHERE Id=@UserId;
@@ -179,6 +219,11 @@ BEGIN NOT ATOMIC
     UPDATE AEDReports SET LastUpdated=NULL WHERE UserId=@UserId;
     UPDATE AEDReports SET UserId=-1 WHERE UserId=@UserId;
     UPDATE AEDReports SET AEDId=-1 WHERE UserId=@UserId;
+    UPDATE AEDReports SET PhotoUrl=NULL WHERE UserId=@UserId;
+    UPDATE AEDReports SET PhotoUrl='' WHERE UserId=@UserId;
+    UPDATE AEDReports SET PhotoUrl='   ' WHERE UserId=@UserId;
+    UPDATE AEDReports SET PhotoUrl=CONCAT(CHAR(9), CHAR(10), CHAR(13)) WHERE UserId=@UserId;
+    INSERT INTO AEDReports (UserId, Created, LastUpdated, Status) VALUES (@UserId, NOW(6), NOW(6), 0);
     DELETE FROM Users WHERE Id=@UserId;
     DELETE FROM AEDs WHERE Id=@AEDId;
     DELETE FROM Addresses WHERE Id=@AddressId;
@@ -187,9 +232,9 @@ DELIMITER ;
 SELECT @Rejected;
 ROLLBACK;
 '@
-    Assert ($reportChecks -ceq "1`n1`n20") 'User/report constraints, optional fields, date precision, or deletion restrictions are incorrect.'
+    Assert ($reportChecks -ceq "1`n1`n25") 'User/report constraints, required image paths, date precision, or deletion restrictions are incorrect.'
     Write-Host 'PASS: Required password hashes, explicit legacy provisioning failure/recovery, credential preservation, and repeatable password upgrade.'
-    Write-Host 'PASS: Users/reports schema upgrade, sample types/statuses, required personal data, unique usernames, optional AED/photo, and restricted relationships.'
+    Write-Host 'PASS: Users/reports schema upgrade, sample types/statuses, required personal data/photo paths, unique usernames, optional AEDs, and restricted relationships.'
     $before = Get-DataSnapshot
     Invoke-TestSql @'
 ALTER TABLE Cities MODIFY COLUMN Name LONGTEXT NOT NULL;
@@ -266,6 +311,7 @@ SELECT @RejectedCoordinates;
     $start.ArgumentList.Add('--urls')
     $start.ArgumentList.Add($base)
     $start.Environment['ASPNETCORE_ENVIRONMENT'] = 'Development'
+    $start.Environment['ReportImages__Directory'] = $imageDirectory
     $start.Environment['ConnectionStrings__AED4Life'] = "Server=127.0.0.1;Port=$databasePort;User ID=root;Password=$password;Database=checks;Pooling=false;"
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
@@ -286,6 +332,53 @@ SELECT @RejectedCoordinates;
         }
     }
     Assert $ready 'API did not become ready.'
+
+    $userId = [Int64] (Invoke-TestSql 'SELECT MIN(Id) FROM Users;')
+    $aedId = [Int64] (Invoke-TestSql 'SELECT MIN(Id) FROM AEDs;')
+    $reportMetadata = @{ userId = $userId; aedId = $aedId } | ConvertTo-Json -Compress
+    $png = [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0AAAAABJRU5ErkJggg==')
+    $report = Invoke-Report $reportMetadata -Image $png -FileName '..\..\untrusted.html'
+    Assert ($report.userId -eq $userId -and $report.aedId -eq $aedId -and $report.status -eq 'Submitted') 'Report response has incorrect metadata or status.'
+    Assert ($report.photoUrl -cmatch '^[0-9a-f]{32}\.png$') 'Upload did not generate a safe filename based on the image signature.'
+    Assert ([Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $imageDirectory $report.photoUrl))) -ceq [Convert]::ToBase64String($png)) 'Uploaded image bytes were not persisted intact outside the database.'
+    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDReports WHERE Id=$($report.id) AND UserId=$userId AND AEDId=$aedId AND PhotoUrl='$($report.photoUrl)' AND Status=0 AND Created=LastUpdated AND Created BETWEEN UTC_TIMESTAMP()-INTERVAL 1 MINUTE AND UTC_TIMESTAMP()+INTERVAL 1 MINUTE;") -eq '1') 'Report was not persisted with server-controlled UTC timestamps and image path.'
+    $urlMetadata = @{ userId = $userId; photoUrl = '  https://example.invalid/aed.jpg  ' } | ConvertTo-Json -Compress
+    $urlReport = Invoke-Report $urlMetadata
+    Assert ($null -eq $urlReport.aedId -and $urlReport.photoUrl -eq 'https://example.invalid/aed.jpg') 'Metadata-only report did not preserve optional AED/trimmed external photo URL.'
+    $jpeg = [Byte[]] @(255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1, 255, 217)
+    $jpegReport = Invoke-Report $reportMetadata -Image $jpeg
+    Assert ($jpegReport.photoUrl -cmatch '^[0-9a-f]{32}\.jpg$') 'JPEG signatures were not recognized independently of the supplied filename.'
+    $beforeReports = Get-DataSnapshot
+    $filesBefore = @([IO.Directory]::GetFiles($imageDirectory)).Count
+    foreach ($invalidMetadata in @('null', '[]', '{', '{}',
+        '{"userId":-1,"photoUrl":"/a.jpg"}', '{"userId":9223372036854775807,"photoUrl":"/a.jpg"}',
+        "{`"userId`":$userId,`"aedId`":-1,`"photoUrl`":`"/a.jpg`"}",
+        "{`"userId`":$userId,`"aedId`":9223372036854775807,`"photoUrl`":`"/a.jpg`"}",
+        "{`"userId`":$userId,`"status`":`"Confirmed`",`"photoUrl`":`"/a.jpg`"}",
+        "{`"userId`":$userId,`"photoUrl`":`"  `"}", (' ' * 16385))) {
+        Invoke-Report $invalidMetadata -ExpectedStatus 400 | Out-Null
+    }
+    Invoke-Report $urlMetadata -Image $png -ExpectedStatus 400 | Out-Null
+    Invoke-Report $reportMetadata -Image ([Byte[]]::new(0)) -ExpectedStatus 400 | Out-Null
+    Invoke-Report $reportMetadata -Image ([Text.Encoding]::UTF8.GetBytes('<svg>not a PNG</svg>')) -ExpectedStatus 415 | Out-Null
+    Invoke-Report $reportMetadata -Image ([Byte[]]::new(5 * 1024 * 1024 + 1)) -ExpectedStatus 413 | Out-Null
+    Invoke-Report $reportMetadata -Image ([Byte[]]::new(6 * 1024 * 1024)) -ExpectedStatus 413 | Out-Null
+    Invoke-TestSql "CREATE TRIGGER RejectTestReport BEFORE INSERT ON AEDReports FOR EACH ROW SIGNAL SQLSTATE '45000' SET MYSQL_ERRNO=4025, MESSAGE_TEXT='Test report rejection';" | Out-Null
+    try {
+        Invoke-Report $reportMetadata -Image $png -ExpectedStatus 409 | Out-Null
+    } finally { Invoke-TestSql 'DROP TRIGGER RejectTestReport;' | Out-Null }
+    $imageBackup = $imageDirectory + '-backup'
+    [IO.Directory]::Move($imageDirectory, $imageBackup)
+    try {
+        [IO.File]::WriteAllText($imageDirectory, 'Storage failure fixture')
+        Invoke-Report $reportMetadata -Image $png -ExpectedStatus 503 | Out-Null
+    } finally {
+        [IO.File]::Delete($imageDirectory)
+        [IO.Directory]::Move($imageBackup, $imageDirectory)
+    }
+    Assert ((Get-DataSnapshot) -ceq $beforeReports) 'Rejected report requests changed database records.'
+    Assert (@([IO.Directory]::GetFiles($imageDirectory)).Count -eq $filesBefore) 'Rejected report requests left orphan image files.'
+    Write-Host 'PASS: Multipart report creation, optional/external images, generated filenames, PNG/JPEG signatures, limits, validation, storage errors, and failed-save cleanup.'
 
     $mappings = @(
         @('city', 'STRING', 'Cities.Name', 'STRING'),
@@ -638,6 +731,11 @@ INSERT INTO AEDs (SerialNumber,Latitude,Longitude,Created,LastUpdated) VALUES
     Write-Host 'PASS: Server-side great-circle nearest selection at the antimeridian and poles, and deterministic ties.'
 
     $spec = Invoke-RestMethod "$base/openapi/v1.json"
+    $reportOperation = $spec.paths.'/api/zgloszenia'.post
+    Assert ($reportOperation.operationId -eq 'CreateAEDReport' -and $null -ne $reportOperation.requestBody.content.'multipart/form-data') 'Report creation multipart endpoint is not documented.'
+    foreach ($status in @('201', '400', '409', '413', '415', '503')) {
+        Assert ($null -ne $reportOperation.responses.$status) "Report response $status is missing from OpenAPI."
+    }
     $operation = $spec.paths.'/api/translations/profiles({name})/import'.post
     Assert ($operation.operationId -eq 'ImportTranslationCsv') 'Import OpenAPI route is missing.'
     Assert ($null -ne $operation.requestBody.content.'multipart/form-data') 'File upload is not documented as multipart.'
@@ -667,6 +765,9 @@ INSERT INTO AEDs (SerialNumber,Latitude,Longitude,Created,LastUpdated) VALUES
     if ($created) {
         & wsl.exe --distribution $Distribution --exec docker rm --force --volumes $container | Out-Null
         if ($LASTEXITCODE -ne 0) { Write-Warning "Could not remove test container $container." }
+    }
+    if (Test-Path -LiteralPath $imageDirectory) {
+        Remove-Item -LiteralPath $imageDirectory -Recurse -Force
     }
     $OutputEncoding = $previousOutputEncoding
 }

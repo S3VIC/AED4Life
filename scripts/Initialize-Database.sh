@@ -42,6 +42,7 @@ for file_name in \
     008-aed-owner.sql \
     009-users-and-aed-reports.sql \
     010-user-password-hash.sql \
+    011-required-report-photo.sql \
     002-populate-tables.sql; do
     printf 'Applying %s...\n' "$file_name"
     if ! docker compose --project-name "$project_name" exec -T mariadb sh -c \

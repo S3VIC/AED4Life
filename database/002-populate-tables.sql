@@ -146,9 +146,9 @@ WITH UserSlots AS (
 SELECT user.Id, aed.Id, sample.PhotoUrl, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), sample.Status
 FROM (
     SELECT 1 AS UserSlot, 1 AS AEDSlot, '/images/demo-aed.jpg' AS PhotoUrl, 0 AS Status
-    UNION ALL SELECT 2, 2, NULL, 1
-    UNION ALL SELECT 3, 3, NULL, 2
-    UNION ALL SELECT 4, NULL, NULL, 3
+    UNION ALL SELECT 2, 2, '/images/demo-aed-under-review.jpg', 1
+    UNION ALL SELECT 3, 3, '/images/demo-aed-confirmed.jpg', 2
+    UNION ALL SELECT 4, NULL, '/images/demo-aed-rejected.jpg', 3
 ) AS sample
 JOIN UserSlots AS user ON user.Slot = MOD(sample.UserSlot - 1, user.SlotCount) + 1
 LEFT JOIN AEDSlots AS aed ON aed.Slot = MOD(sample.AEDSlot - 1, aed.SlotCount) + 1

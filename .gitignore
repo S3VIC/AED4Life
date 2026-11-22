@@ -9,3 +9,6 @@
 # artifacts folders
 **/obj
 **/bin
+
+# Local report image storage
+**/App_Data/report-images/

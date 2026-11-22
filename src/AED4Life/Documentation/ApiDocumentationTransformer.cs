@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AED4Life.DataModel.DTOs;
+using AED4Life.DataModel.Enums;
 using AED4Life.Requests;
 using AED4Life.Trananslation;
 using Microsoft.AspNetCore.OpenApi;
@@ -13,6 +14,37 @@ public sealed class ApiDocumentationTransformer : IOpenApiOperationTransformer {
 	public Task TransformAsync(OpenApiOperation operation, OpenApiOperationTransformerContext context,
 		CancellationToken cancellationToken) {
 		switch (operation.OperationId) {
+			case "CreateAEDReport":
+				if (operation.RequestBody is not OpenApiRequestBody reportBody
+					|| reportBody.Content is null
+					|| !reportBody.Content.TryGetValue("multipart/form-data", out OpenApiMediaType? reportForm)) {
+					throw new InvalidOperationException("The report endpoint must declare a multipart request body.");
+				}
+				reportBody.Description = "metadata is a JSON string containing userId, optional aedId, and photoUrl when image is omitted. "
+					+ "image is an optional PNG/JPEG file up to 5 MiB. Supply exactly one image source. "
+					+ "Status and timestamps are server-controlled; unknown JSON fields are rejected.";
+				reportForm.Examples = new Dictionary<String, IOpenApiExample> {
+					["existingImage"] = Example("Report with an existing image path", new {
+						metadata = JsonSerializer.Serialize(new CreateAEDReportRequest(1, 1, "/photos/existing-aed.jpg"), JsonOptions)
+					}),
+					["upload"] = Example("Metadata for an image upload; select a file in image", new {
+						metadata = JsonSerializer.Serialize(new CreateAEDReportRequest(1, null, null), JsonOptions)
+					})
+				};
+				ResponseContent(operation, "201", "Report created. Uploaded photoUrl values are relative filenames, not public download URLs.")
+					.Examples = new Dictionary<String, IOpenApiExample> {
+						["created"] = Example("Created report", new AEDReportResponse(
+							42, 1, 1, "b64c86c6c07c493cad9d97015fcb5811.png",
+							new DateTime(2026, 11, 22, 8, 0, 0, DateTimeKind.Utc),
+							new DateTime(2026, 11, 22, 8, 0, 0, DateTimeKind.Utc), ReportStatus.Submitted))
+					};
+				ResponseContent(operation, "400", "Invalid metadata, unknown user/AED, empty upload, or missing/conflicting image sources.", "application/problem+json");
+				ResponseContent(operation, "409", "Database constraints prevented creating the report; newly uploaded files are removed.", "application/problem+json");
+				ResponseContent(operation, "413", "Image exceeds 5 MiB or the multipart request exceeds the request limit.", "application/problem+json");
+				ResponseContent(operation, "415", "Use multipart/form-data and PNG/JPEG image signatures.", "application/problem+json");
+				ResponseContent(operation, "503", "Image storage is unavailable; no report was created.", "application/problem+json");
+				break;
+
 			case "GetAEDOwners":
 				ResponseContent(operation, "200", "All owners with their city and street details; an empty array when none exist.")
 					.Examples = new Dictionary<String, IOpenApiExample> {
