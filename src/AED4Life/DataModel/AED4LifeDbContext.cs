@@ -73,6 +73,8 @@ public sealed class AED4LifeDbContext(DbContextOptions<AED4LifeDbContext> option
 			entity.HasOne<Address>().WithMany().HasForeignKey(aed => aed.AddressId)
 				.OnDelete(DeleteBehavior.Restrict)
 				.HasConstraintName("FK_AEDs_Address_AddressId");
+			entity.HasOne<AEDOwner>().WithMany().HasForeignKey(aed => aed.OwnerId)
+				.OnDelete(DeleteBehavior.Restrict);
 		});
 
 		modelBuilder.Entity<AEDOwner>(entity => {

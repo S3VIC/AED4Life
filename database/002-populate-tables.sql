@@ -82,13 +82,16 @@ JOIN CitySlots AS city ON city.Slot = MOD(sample.CitySlot - 1, city.SlotCount) +
 JOIN StreetSlots AS street ON street.Slot = MOD(sample.StreetSlot - 1, street.SlotCount) + 1
 WHERE NOT EXISTS (SELECT 1 FROM `AEDOwners`);
 
-INSERT INTO `AEDs` (`AddressId`, `Created`, `LastUpdated`, `SerialNumber`,
+INSERT INTO `AEDs` (`AddressId`, `OwnerId`, `Created`, `LastUpdated`, `SerialNumber`,
     `Access`, `AvailabilityStartHour`, `AvailabilityEndHour`, `Rating`, `Latitude`, `Longitude`)
 WITH AddressSlots AS (
     SELECT Id, ROW_NUMBER() OVER (ORDER BY Id) AS Slot, COUNT(*) OVER () AS SlotCount
     FROM `Addresses`
+), OwnerSlots AS (
+    SELECT Id, ROW_NUMBER() OVER (ORDER BY Id) AS Slot, COUNT(*) OVER () AS SlotCount
+    FROM `AEDOwners`
 )
-SELECT address.Id, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), sample.SerialNumber,
+SELECT address.Id, owner.Id, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), sample.SerialNumber,
     sample.Access, sample.AvailabilityStartHour, sample.AvailabilityEndHour, sample.Rating,
     sample.Latitude, sample.Longitude
 FROM (
@@ -102,6 +105,7 @@ FROM (
     UNION ALL SELECT 6, 'AED-A4308E2B', NULL, NULL, NULL, 0, 52.520008, 13.404954
 ) AS sample
 JOIN AddressSlots AS address ON address.Slot = MOD(sample.AddressSlot - 1, address.SlotCount) + 1
+JOIN OwnerSlots AS owner ON owner.Slot = MOD(sample.AddressSlot - 1, owner.SlotCount) + 1
 WHERE NOT EXISTS (SELECT 1 FROM `AEDs`);
 
 COMMIT;

@@ -5,6 +5,7 @@ namespace AED4Life.DataModel.Entities;
 public class AED {
 	public Int64 Id { get; set; }
 	public Int64? AddressId { get; set; }
+	public Int64? OwnerId { get; set; }
 	public DateTime Created { get; set; }
 	public DateTime LastUpdated { get; set; }
 	public String? SerialNumber { get; set; }

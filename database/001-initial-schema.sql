@@ -34,9 +34,27 @@ CREATE TABLE IF NOT EXISTS `Addresses` (
         REFERENCES `PostalCodes` (`Id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `AEDOwners` (
+    `Id` BIGINT NOT NULL AUTO_INCREMENT,
+    `RegonNumber` VARCHAR(14) NULL,
+    `IsPublic` TINYINT(1) NULL,
+    `Name` LONGTEXT NULL,
+    `CityId` BIGINT NULL,
+    `StreetId` BIGINT NULL,
+    CONSTRAINT `PK_AEDOwners` PRIMARY KEY (`Id`),
+    UNIQUE INDEX `IX_AEDOwners_RegonNumber` (`RegonNumber`),
+    INDEX `IX_AEDOwners_CityId` (`CityId`),
+    INDEX `IX_AEDOwners_StreetId` (`StreetId`),
+    CONSTRAINT `FK_AEDOwners_Cities_CityId` FOREIGN KEY (`CityId`)
+        REFERENCES `Cities` (`Id`) ON DELETE RESTRICT,
+    CONSTRAINT `FK_AEDOwners_Streets_StreetId` FOREIGN KEY (`StreetId`)
+        REFERENCES `Streets` (`Id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `AEDs` (
     `Id` BIGINT NOT NULL AUTO_INCREMENT,
     `AddressId` BIGINT NULL,
+    `OwnerId` BIGINT NULL,
     `Created` DATETIME(6) NOT NULL,
     `LastUpdated` DATETIME(6) NOT NULL,
     `SerialNumber` LONGTEXT NULL,
@@ -58,23 +76,9 @@ CREATE TABLE IF NOT EXISTS `AEDs` (
             OR `AvailabilityStartHour` <> `AvailabilityEndHour`)
     ),
     INDEX `IX_AEDs_AddressId` (`AddressId`),
+    INDEX `IX_AEDs_OwnerId` (`OwnerId`),
     CONSTRAINT `FK_AEDs_Address_AddressId` FOREIGN KEY (`AddressId`)
-        REFERENCES `Addresses` (`Id`) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS `AEDOwners` (
-    `Id` BIGINT NOT NULL AUTO_INCREMENT,
-    `RegonNumber` VARCHAR(14) NULL,
-    `IsPublic` TINYINT(1) NULL,
-    `Name` LONGTEXT NULL,
-    `CityId` BIGINT NULL,
-    `StreetId` BIGINT NULL,
-    CONSTRAINT `PK_AEDOwners` PRIMARY KEY (`Id`),
-    UNIQUE INDEX `IX_AEDOwners_RegonNumber` (`RegonNumber`),
-    INDEX `IX_AEDOwners_CityId` (`CityId`),
-    INDEX `IX_AEDOwners_StreetId` (`StreetId`),
-    CONSTRAINT `FK_AEDOwners_Cities_CityId` FOREIGN KEY (`CityId`)
-        REFERENCES `Cities` (`Id`) ON DELETE RESTRICT,
-    CONSTRAINT `FK_AEDOwners_Streets_StreetId` FOREIGN KEY (`StreetId`)
-        REFERENCES `Streets` (`Id`) ON DELETE RESTRICT
+        REFERENCES `Addresses` (`Id`) ON DELETE RESTRICT,
+    CONSTRAINT `FK_AEDs_AEDOwners_OwnerId` FOREIGN KEY (`OwnerId`)
+        REFERENCES `AEDOwners` (`Id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

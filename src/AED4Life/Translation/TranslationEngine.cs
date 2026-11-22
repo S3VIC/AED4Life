@@ -190,10 +190,8 @@ public sealed class TranslationEngine(AED4LifeDbContext database) {
 	}
 
 	private async Task ImportRowAsync(ImportRow row, Dictionary<String, CsvImportTableResult> counts, CancellationToken cancellationToken) {
-		if (row.Values.TryGetValue("AEDOwners", out Dictionary<String, Object?>? ownerValues)
-			&& ownerValues.Values.All(value => value is null)) {
-			row.Values.Remove("AEDOwners");
-		}
+		Boolean hasOwnerValues = row.Values.TryGetValue("AEDOwners", out Dictionary<String, Object?>? ownerValues)
+			&& ownerValues.Values.Any(value => value is not null);
 		if (row.Values.ContainsKey("AEDs") && !HasValue(row, "AEDs", nameof(AED.AddressId))
 			&& !row.Values.ContainsKey("Addresses")
 			&& (row.Values.ContainsKey("Cities") || row.Values.ContainsKey("Streets") || row.Values.ContainsKey("PostalCodes"))) {
@@ -207,14 +205,17 @@ public sealed class TranslationEngine(AED4LifeDbContext database) {
 		Link(row, "Cities", "Addresses", "CityId", city?.Id);
 		Link(row, "Streets", "Addresses", "StreetId", street?.Id);
 		Link(row, "PostalCodes", "Addresses", "PostalCodeId", postalCode?.Id);
-		Link(row, "Cities", "AEDOwners", "CityId", city?.Id);
-		Link(row, "Streets", "AEDOwners", "StreetId", street?.Id);
+		if (hasOwnerValues) {
+			Link(row, "Cities", "AEDOwners", "CityId", city?.Id);
+			Link(row, "Streets", "AEDOwners", "StreetId", street?.Id);
+		}
 		Address? address = await UpsertAsync(row, "Addresses", ["CityId", "StreetId", "PostalCodeId", "BuildingNumber"],
 			() => new Address(), counts, cancellationToken);
 		Link(row, "Addresses", "AEDs", "AddressId", address?.Id);
 		String[] ownerKeys = HasValue(row, "AEDOwners", nameof(AEDOwner.RegonNumber)) ? ["RegonNumber"]
 			: HasValue(row, "AEDOwners", nameof(AEDOwner.Name)) ? ["Name", "CityId", "StreetId"] : [];
-		await UpsertAsync(row, "AEDOwners", ownerKeys, () => new AEDOwner(), counts, cancellationToken);
+		AEDOwner? owner = await UpsertAsync(row, "AEDOwners", ownerKeys, () => new AEDOwner(), counts, cancellationToken);
+		Link(row, "AEDOwners", "AEDs", "OwnerId", owner?.Id);
 		String[] aedKeys = HasValue(row, "AEDs", nameof(AED.SerialNumber)) ? ["SerialNumber"]
 			: HasValue(row, "AEDs", nameof(AED.Latitude)) && HasValue(row, "AEDs", nameof(AED.Longitude))
 				? ["Latitude", "Longitude", "AddressId"] : [];

@@ -61,7 +61,7 @@ When running in Development (the default launch profiles), open
 is available at `https://localhost:7231/openapi/v1.json`.
 
 All current endpoints include descriptions and response examples:
-`GET /api/aed/owners`, `GET /api/translations/profiles`,
+`GET /api/aed/owners`, `GET /api/aed/nearest`, `GET /api/translations/profiles`,
 `GET /api/translations/profiles({name})`, `POST /api/translations/profiles`,
 `POST /api/translations/profiles({name})/import`, and
 `GET /weatherforecast`. The profile endpoint also includes an editable JSON
@@ -106,8 +106,8 @@ code: owners still reference cities and streets directly, and a city does not
 identify a single postal code.
 `AED.AddressId` references `Addresses`; each address contains `CityId`,
 `StreetId`, `PostalCodeId`, and an integer `BuildingNumber`. All these foreign
-keys restrict deletion while referenced. No AED-to-owner relationship has been
-invented. Business-data fields, including names, serial numbers, address parts,
+keys restrict deletion while referenced. `AED.OwnerId` optionally references
+`AEDOwners`, also with restricted deletion. Business-data fields, including names, serial numbers, address parts,
 foreign keys, public flags, and ratings, are nullable. City/street names, owner
 names, and serial numbers use `LONGTEXT`; timestamps are supplied by application
 code, with microsecond database precision.
@@ -129,14 +129,15 @@ it does not read or print passwords. Optional `-Distribution` and `-ProjectName`
 parameters select another WSL distribution or Compose project.
 
 It creates missing tables, applies `003-unique-owner-regon.sql`,
-`004-translation-profiles.sql`, `005-aed-availability.sql`, and
-`006-aed-coordinates.sql` and `007-nullable-import-data.sql`, then executes
+`004-translation-profiles.sql`, `005-aed-availability.sql`,
+`006-aed-coordinates.sql`, `007-nullable-import-data.sql`, and
+`008-aed-owner.sql`, then executes
 `002-populate-tables.sql`.
 Each location/AED/owner sample-data table receives rows only when completely
 empty; partially populated tables are left unchanged. Sample addresses use
 actual existing city/street/postal-code IDs in ascending order, cycling through
-available lookup rows. AEDs similarly use actual address IDs, and owners use
-actual city/street IDs. Their locations are
+available lookup rows. AEDs similarly use actual address and owner IDs, and owners use
+actual city/street IDs. Seeded ownership associations and locations are
 demonstration data, not verified addresses.
 
 An empty database receives six cities, four streets, six postal codes, six
@@ -295,8 +296,11 @@ IDs and whatever data is available. Empty mapped related lookups clear their
 inferred foreign keys; an explicitly supplied nonnull foreign key takes
 precedence over an empty lookup.
 Explicit foreign keys may instead refer to existing records. Supplying an
-explicit ID that disagrees with a related mapped record is rejected. No
-AED-to-owner link is inferred.
+explicit ID that disagrees with a related mapped record is rejected.
+A mapped owner in a CSV row supplies that row's `AEDs.OwnerId`; a wholly empty
+mapped owner clears the link unless an explicit nonnull `OwnerId` is supplied.
+Unmapped ownership is preserved. Ownership is never guessed from a shared
+city/street address.
 
 For example, a profile mapping the following five columns creates or matches
 a complete AED location without any IDs in the CSV:
@@ -340,12 +344,12 @@ NULL,\N,, ,21.014000,NULL
 
 Upload to `/api/translations/profiles(openaedmap-2)/import`. No serial number,
 REGON, public flag, or building number is required. The importer infers partial
-addresses and uses the fallback matching keys described above. It does not
-invent an AED-to-owner relationship that is absent from the schema.
+addresses and uses the fallback matching keys described above. The row's
+`operator` is linked to its AED through the nullable `OwnerId` foreign key.
 
 Before importing into an existing database, run
 `.\scripts\Initialize-Database.ps1` to apply
-`database\007-nullable-import-data.sql`. The upgrade preserves existing values;
+`database\007-nullable-import-data.sql` and `database\008-aed-owner.sql`. These upgrades preserve existing values;
 it does not rewrite existing nonnull data or translation profiles.
 Mapped headers must still exist, even if every cell beneath one is empty.
 
@@ -367,6 +371,50 @@ Run the focused integration checks from PowerShell 7 with Docker running in WSL:
 
 The checks create and remove an isolated MariaDB container and API process;
 they do not modify the application's existing database.
+
+## Find the nearest available AED
+
+```powershell
+curl.exe "https://localhost:7231/api/aed/nearest?latitude=52.229676&longitude=21.012229"
+```
+
+Both query coordinates are required, finite decimal degrees within latitude
+[-90, 90] and longitude [-180, 180]. The database ranks eligible AEDs by
+great-circle (straight-line, not walking/driving) distance; it does not load all
+AEDs into application memory. Equal distances choose the lowest AED ID.
+
+An eligible AED has both coordinates, is not marked `Private`, and is not known
+to be closed. `Open`, `Emergency`, and unknown access are included. Complete
+daily opening hours are checked against the current **Europe/Warsaw** time,
+including daylight-saving changes. Opening is inclusive and closing exclusive;
+overnight ranges such as 22 to 6 work across midnight. If either hour is
+unknown, availability is treated as unknown and the AED is included. Ratings
+and an owner's public/private flag do not override these access rules.
+
+Example response:
+
+```json
+{
+  "id": 1,
+  "latitude": 52.229676,
+  "longitude": 21.012229,
+  "ownerName": "Example operator",
+  "cityName": "Warszawa",
+  "streetName": "Example Street",
+  "postalCode": "00-001",
+  "buildingNumber": 10
+}
+```
+
+Unknown or blank owner/address text, and unknown building numbers, are omitted
+from the response. An AED without an owner or address still returns its ID and
+coordinates. Invalid query coordinates return `400`; no eligible AED returns
+`404`.
+
+For an existing database, run `.\scripts\Initialize-Database.ps1` to apply
+`008-aed-owner.sql`. Existing AEDs retain unknown ownership (`NULL`); no
+historical owner is inferred from location. Reimport CSV data with owner
+mappings, such as `openaedmap-2`, to populate these explicit links.
 
 ## AED access, hours, and rating
 

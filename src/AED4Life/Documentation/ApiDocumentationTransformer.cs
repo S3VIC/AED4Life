@@ -26,6 +26,29 @@ public sealed class ApiDocumentationTransformer : IOpenApiOperationTransformer {
 					};
 				break;
 
+			case "GetNearestAvailableAED":
+				ResponseContent(operation, "200", "The nearest available AED. Unknown owner/address fields are omitted, not returned as null.")
+					.Examples = new Dictionary<String, IOpenApiExample> {
+						["withAddress"] = Example("AED with owner and address", new NearestAEDResponse(
+							1, 52.229676, 21.012229, "Example operator", "Warszawa", "Example Street", "00-001", 10)),
+						["coordinatesOnly"] = Example("AED without known owner or address", new NearestAEDResponse(
+							2, 52.230000, 21.013000, null, null, null, null, null))
+					};
+				ResponseContent(operation, "400", "Missing, malformed, nonfinite, or out-of-range query coordinates.", "application/problem+json")
+					.Examples = new Dictionary<String, IOpenApiExample> {
+						["invalidLatitude"] = Example("Latitude out of range", TypedResults.ValidationProblem(
+							new Dictionary<String, String[]> {
+								["latitude"] = ["Latitude must be a finite number between -90 and 90."]
+							}).ProblemDetails)
+					};
+				ResponseContent(operation, "404", "No available AED has both coordinates.", "application/problem+json")
+					.Examples = new Dictionary<String, IOpenApiExample> {
+						["notFound"] = Example("No candidate found", TypedResults.Problem(
+							statusCode: StatusCodes.Status404NotFound,
+							title: "No available AED with known coordinates was found.").ProblemDetails)
+					};
+				break;
+
 			case "GetTranslationProfiles":
 			case "GetTranslationProfileByName":
 			case "CreateTranslationProfile":

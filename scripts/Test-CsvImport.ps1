@@ -58,6 +58,16 @@ function Invoke-Import([String] $Name, [String] $Csv, [Int32] $ExpectedStatus = 
     }
 }
 
+function Invoke-Nearest([String] $Query, [Int32] $ExpectedStatus = 200) {
+    $response = $client.GetAsync("$base/api/aed/nearest?$Query").GetAwaiter().GetResult()
+    try {
+        $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        Assert ([Int32] $response.StatusCode -eq $ExpectedStatus) "Expected $ExpectedStatus, received $([Int32] $response.StatusCode): $body"
+        if ($ExpectedStatus -eq 200) { return $body | ConvertFrom-Json }
+        return $body
+    } finally { $response.Dispose() }
+}
+
 try {
     $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
     dotnet build (Join-Path $projectDirectory 'src\AED4Life.slnx') --nologo --verbosity quiet
@@ -91,6 +101,19 @@ ALTER TABLE AEDs MODIFY COLUMN AddressId BIGINT NOT NULL, MODIFY COLUMN SerialNu
     $nullableUpgrade = Get-Content -LiteralPath (Join-Path $projectDirectory 'database\007-nullable-import-data.sql') -Raw -Encoding UTF8
     Invoke-TestSql ($nullableUpgrade + "`n" + $nullableUpgrade) | Out-Null
     Assert ((Get-DataSnapshot) -ceq $before) 'Nullable upgrade did not preserve existing data from the old nonnullable schema.'
+    $ownerUpgrade = Get-Content -LiteralPath (Join-Path $projectDirectory 'database\008-aed-owner.sql') -Raw -Encoding UTF8
+    Invoke-TestSql @"
+CREATE DATABASE checks_owner_upgrade;
+CREATE TABLE checks_owner_upgrade.AEDOwners LIKE AEDOwners;
+INSERT INTO checks_owner_upgrade.AEDOwners SELECT * FROM AEDOwners;
+CREATE TABLE checks_owner_upgrade.AEDs LIKE AEDs;
+INSERT INTO checks_owner_upgrade.AEDs SELECT * FROM AEDs;
+ALTER TABLE checks_owner_upgrade.AEDs DROP INDEX IX_AEDs_OwnerId, DROP COLUMN OwnerId;
+USE checks_owner_upgrade;
+$ownerUpgrade
+$ownerUpgrade
+"@ | Out-Null
+    Assert ((Invoke-TestSql 'SELECT COUNT(*) FROM checks_owner_upgrade.AEDs WHERE OwnerId IS NULL;') -eq '6') 'Owner upgrade guessed ownership or lost existing AEDs.'
     Assert ((Invoke-TestSql @'
 SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='checks'
 AND TABLE_NAME IN ('Cities','Streets','PostalCodes','Addresses','AEDOwners','AEDs')
@@ -188,7 +211,7 @@ North",true
     $related = Invoke-TestSql @'
 SELECT COUNT(*) FROM AEDs a JOIN Addresses d ON a.AddressId=d.Id
 JOIN Cities c ON d.CityId=c.Id JOIN Streets s ON d.StreetId=s.Id JOIN PostalCodes p ON d.PostalCodeId=p.Id
-JOIN AEDOwners o ON o.CityId=c.Id AND o.StreetId=s.Id
+JOIN AEDOwners o ON a.OwnerId=o.Id
 WHERE a.SerialNumber='IMPORT-001' AND c.Name='Import City, North' AND s.Name='Main "Test" Street'
 AND p.Code='00-901' AND d.BuildingNumber=10 AND o.RegonNumber='000001234' AND o.IsPublic=1
 AND o.Name LIKE 'School%North' AND a.Access=0 AND a.Rating=1 AND a.AvailabilityEndHour=24;
@@ -355,7 +378,7 @@ Other City,Other Street,00-903,10.5,IMPORT-BAD,1,,,0,000009999,Invalid row,true
     Assert ((Invoke-TestSql @'
 SELECT COUNT(*) FROM AEDs a JOIN Addresses d ON a.AddressId=d.Id
 JOIN Cities c ON d.CityId=c.Id JOIN Streets s ON d.StreetId=s.Id JOIN PostalCodes p ON d.PostalCodeId=p.Id
-JOIN AEDOwners o ON o.CityId=c.Id AND o.StreetId=s.Id
+JOIN AEDOwners o ON a.OwnerId=o.Id
 WHERE c.Name='OpenAED City' AND s.Name='OpenAED Street' AND p.Code='00-981'
 AND d.BuildingNumber IS NULL AND a.SerialNumber IS NULL AND a.Rating IS NULL
 AND o.Name='OpenAED Operator' AND o.RegonNumber IS NULL AND o.IsPublic IS NULL;
@@ -364,6 +387,9 @@ AND o.Name='OpenAED Operator' AND o.RegonNumber IS NULL AND o.IsPublic IS NULL;
     $result = Invoke-Import 'openaedmap-2' $openAedCsv
     Assert ((Get-DataSnapshot) -ceq $before) 'Fallback-key reimport changed or duplicated existing records.'
     Assert ($result.tables.AEDs.inserted -eq 0 -and $result.tables.AEDOwners.inserted -eq 0) 'Fallback keys did not match existing records.'
+    Invoke-Import 'openaedmap-2' ($openAedCsv.Replace('OpenAED Operator', '')) | Out-Null
+    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDs a JOIN Addresses d ON a.AddressId=d.Id JOIN Cities c ON d.CityId=c.Id WHERE c.Name='OpenAED City' AND a.OwnerId IS NULL;") -eq '1') 'An empty mapped operator did not clear the AED owner link.'
+    Invoke-Import 'openaedmap-2' $openAedCsv | Out-Null
     Invoke-Import 'openaedmap-2' ($openAedCsv.Replace('OpenAED City,', 'Another OpenAED City,')) | Out-Null
     Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDOwners WHERE Name='OpenAED Operator' AND RegonNumber IS NULL;") -eq '2') 'Owner fallback matching merged different locations.'
     Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDs WHERE SerialNumber IS NULL AND ABS(Latitude-52.123456)<0.000000001 AND ABS(Longitude-21.123456)<0.000000001;") -eq '2') 'AED fallback matching ignored the address.'
@@ -412,10 +438,94 @@ AND COLUMN_NAME NOT IN ('Id','Created','LastUpdated') AND IS_NULLABLE='NO';
 '@) -eq '0') 'An imported business-data column is still nonnullable.'
     Write-Host 'PASS: Exact OpenAEDMap profile, partial inferred addresses, fallback identity, NULL tokens, sparse owners/API results, optional hours, and upgrade reruns.'
 
+    $warsawHour = [TimeZoneInfo]::ConvertTime([DateTimeOffset]::UtcNow, [TimeZoneInfo]::FindSystemTimeZoneById('Europe/Warsaw')).Hour
+    $closedStart = ($warsawHour + 12) % 24
+    $closedEnd = ($warsawHour + 13) % 24
+    Invoke-TestSql @"
+UPDATE AEDs SET Access=2;
+INSERT INTO Cities (Name) VALUES ('Nearest City'); SET @City=LAST_INSERT_ID();
+INSERT INTO Streets (Name) VALUES ('Nearest Street'); SET @Street=LAST_INSERT_ID();
+INSERT INTO PostalCodes (Code) VALUES ('00-999'); SET @Postal=LAST_INSERT_ID();
+INSERT INTO Addresses (CityId,StreetId,PostalCodeId,BuildingNumber) VALUES (@City,@Street,@Postal,10); SET @Address=LAST_INSERT_ID();
+INSERT INTO AEDOwners (Name,CityId,StreetId) VALUES ('Nearest Owner',@City,@Street); SET @Owner=LAST_INSERT_ID();
+INSERT INTO AEDs (SerialNumber,Latitude,Longitude,OwnerId,AddressId,Access,AvailabilityStartHour,AvailabilityEndHour,Created,LastUpdated) VALUES
+('NEAR-PRIVATE',0,0,@Owner,@Address,2,NULL,NULL,NOW(6),NOW(6)),
+('NEAR-CLOSED',0,0.0001,@Owner,@Address,0,$closedStart,$closedEnd,NOW(6),NOW(6)),
+('NEAR-OPEN',0,0.001,@Owner,@Address,0,0,24,NOW(6),NOW(6)),
+('NEAR-FAR',0,0.01,NULL,NULL,1,0,24,NOW(6),NOW(6)),
+('NEAR-NO-LAT',NULL,0,NULL,NULL,0,NULL,NULL,NOW(6),NOW(6)),
+('NEAR-NO-LON',0,NULL,NULL,NULL,0,NULL,NULL,NOW(6),NOW(6));
+"@ | Out-Null
+    $nearest = Invoke-Nearest 'latitude=0&longitude=0'
+    Assert ($nearest.longitude -eq 0.001 -and $nearest.latitude -eq 0 -and $nearest.ownerName -eq 'Nearest Owner') 'Nearest available AED did not exclude private/closed/missing-coordinate candidates.'
+    Assert ($nearest.cityName -eq 'Nearest City' -and $nearest.streetName -eq 'Nearest Street' -and $nearest.postalCode -eq '00-999' -and $nearest.buildingNumber -eq 10) 'Nearest AED omitted known address metadata.'
+    Invoke-TestSql "INSERT INTO AEDs (SerialNumber,Latitude,Longitude,Created,LastUpdated) VALUES ('NEAR-UNKNOWN',0,0.0005,NOW(6),NOW(6));" | Out-Null
+    $nearest = Invoke-Nearest 'latitude=0&longitude=0'
+    Assert ($nearest.longitude -eq 0.0005) 'Unknown access/hours were not allowed.'
+    Assert (($nearest.PSObject.Properties.Name -join '|') -eq 'id|latitude|longitude') 'Unknown metadata was returned instead of omitted.'
+    Invoke-TestSql @'
+INSERT INTO Streets (Name) VALUES ('  '); SET @BlankStreet=LAST_INSERT_ID();
+INSERT INTO Addresses (CityId,StreetId) SELECT Id,@BlankStreet FROM Cities WHERE Name='Nearest City';
+SET @PartialAddress=LAST_INSERT_ID();
+INSERT INTO AEDOwners (Name) VALUES (' '); SET @BlankOwner=LAST_INSERT_ID();
+UPDATE AEDs SET AddressId=@PartialAddress,OwnerId=@BlankOwner WHERE SerialNumber='NEAR-UNKNOWN';
+'@ | Out-Null
+    $nearest = Invoke-Nearest 'latitude=0&longitude=0'
+    Assert ($nearest.cityName -eq 'Nearest City' -and @($nearest.PSObject.Properties).Count -eq 4) 'Partial metadata or blank text was not handled correctly.'
+    Invoke-TestSql 'UPDATE AEDs SET Access=2;' | Out-Null
+    Invoke-Nearest 'latitude=0&longitude=0' 404 | Out-Null
+    foreach ($query in @('latitude=91&longitude=0', 'latitude=0&longitude=-181', 'latitude=NaN&longitude=0',
+        'latitude=0&longitude=Infinity', 'longitude=0', 'latitude=0&longitude=invalid')) {
+        Invoke-Nearest $query 400 | Out-Null
+    }
+
+    $warsawHour = [TimeZoneInfo]::ConvertTime([DateTimeOffset]::UtcNow, [TimeZoneInfo]::FindSystemTimeZoneById('Europe/Warsaw')).Hour
+    $openEnd = ($warsawHour + 2) % 24
+    Invoke-TestSql "UPDATE AEDs SET Access=1,AvailabilityStartHour=$warsawHour,AvailabilityEndHour=$openEnd WHERE SerialNumber='NEAR-OPEN';" | Out-Null
+    $nearest = Invoke-Nearest 'latitude=0&longitude=0'
+    Assert ($nearest.longitude -eq 0.001) 'Emergency access or inclusive Warsaw opening hour was rejected.'
+    $priorHour = ($warsawHour + 22) % 24
+    Invoke-TestSql "UPDATE AEDs SET AvailabilityStartHour=$priorHour,AvailabilityEndHour=$warsawHour WHERE SerialNumber='NEAR-OPEN';" | Out-Null
+    Invoke-Nearest 'latitude=0&longitude=0' 404 | Out-Null
+    Invoke-TestSql "UPDATE AEDs SET AvailabilityStartHour=22,AvailabilityEndHour=6 WHERE SerialNumber='NEAR-OPEN';" | Out-Null
+    $overnightStatus = if ($warsawHour -ge 22 -or $warsawHour -lt 6) { 200 } else { 404 }
+    Invoke-Nearest 'latitude=0&longitude=0' $overnightStatus | Out-Null
+    Invoke-TestSql "UPDATE AEDs SET AvailabilityStartHour=23,AvailabilityEndHour=NULL WHERE SerialNumber='NEAR-OPEN';" | Out-Null
+    Invoke-Nearest 'latitude=0&longitude=0' | Out-Null
+    Write-Host 'PASS: Nearest filtering, linked owner/address metadata, omission, query validation, Warsaw hours, overnight and partial hours.'
+
+    Invoke-TestSql @'
+UPDATE AEDs SET Access=2;
+INSERT INTO AEDs (SerialNumber,Latitude,Longitude,Access,Created,LastUpdated) VALUES
+('DATELINE-WRAP',0,-179.9,0,NOW(6),NOW(6)), ('DATELINE-FAR',0,179,0,NOW(6),NOW(6));
+'@ | Out-Null
+    $nearest = Invoke-Nearest 'latitude=0&longitude=179.9'
+    Assert ($nearest.longitude -eq -179.9) 'Distance ranking did not wrap across the antimeridian.'
+    Invoke-TestSql @'
+UPDATE AEDs SET Access=2;
+INSERT INTO AEDs (SerialNumber,Latitude,Longitude,Access,Created,LastUpdated) VALUES
+('POLAR-NEAR',89.9,180,0,NOW(6),NOW(6)), ('POLAR-FAR',89,0,0,NOW(6),NOW(6));
+'@ | Out-Null
+    $nearest = Invoke-Nearest 'latitude=89.9&longitude=0'
+    Assert ($nearest.longitude -eq 180 -and $nearest.latitude -eq 89.9) 'Distance ranking ignored polar geometry.'
+    Invoke-TestSql @'
+UPDATE AEDs SET Access=2;
+INSERT INTO AEDs (SerialNumber,Latitude,Longitude,Created,LastUpdated) VALUES
+('TIE-A',1,1,NOW(6),NOW(6)), ('TIE-B',1,1,NOW(6),NOW(6));
+'@ | Out-Null
+    $nearest = Invoke-Nearest 'latitude=1&longitude=1'
+    Assert ($nearest.id -eq [Int64](Invoke-TestSql "SELECT MIN(Id) FROM AEDs WHERE SerialNumber IN ('TIE-A','TIE-B');")) 'Distance ties were not resolved deterministically.'
+    Write-Host 'PASS: Server-side great-circle nearest selection at the antimeridian and poles, and deterministic ties.'
+
     $spec = Invoke-RestMethod "$base/openapi/v1.json"
     $operation = $spec.paths.'/api/translations/profiles({name})/import'.post
     Assert ($operation.operationId -eq 'ImportTranslationCsv') 'Import OpenAPI route is missing.'
     Assert ($null -ne $operation.requestBody.content.'multipart/form-data') 'File upload is not documented as multipart.'
+    $nearestOperation = $spec.paths.'/api/aed/nearest'.get
+    Assert ($nearestOperation.operationId -eq 'GetNearestAvailableAED') 'Nearest AED endpoint is not documented.'
+    Assert ($nearestOperation.parameters.Count -eq 2) 'Nearest AED query parameters are not documented.'
+    $minimalExample = $nearestOperation.responses.'200'.content.'application/json'.examples.coordinatesOnly.value
+    Assert (($minimalExample.PSObject.Properties.Name -join '|') -eq 'id|latitude|longitude') 'Nearest AED documentation exposes unknown metadata.'
     foreach ($status in @('200', '400', '404', '409', '415')) {
         Assert ($null -ne $operation.responses.$status) "Import response $status is missing from OpenAPI."
     }
