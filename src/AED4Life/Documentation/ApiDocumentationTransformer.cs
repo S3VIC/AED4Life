@@ -23,17 +23,23 @@ public sealed class ApiDocumentationTransformer : IOpenApiOperationTransformer {
 				reportBody.Description = "metadata is a JSON string containing userId, required nonblank description of the device placement, optional aedId, and photoUrl when image is omitted. "
 					+ "Optional availabilityStartHour (0-23), availabilityEndHour (0-24), and isPubliclyAccessible may be null or omitted. "
 					+ "Optional rating must be an integer from 0 to 100 inclusive, or null when unknown. "
+					+ "Optional reporterLatitude/reporterLongitude must be supplied together. If aedId is omitted, the nearest AED within 100 meters of reporter GPS is linked, including closed/private devices. "
+					+ "An explicit aedId takes precedence. Optional latitude/longitude, cityName, streetName, postalCode (up to 6 characters), and integer buildingNumber describe the AED. "
+					+ "Known database location fields take precedence, with missing fields filled from the request. Reporter GPS is stored separately; unmatched locations are stored only on the report. "
+					+ "Coordinate ranges are latitude -90 to 90 and longitude -180 to 180; only finite numbers are accepted. "
 					+ "Hour bounds may be supplied independently; complete ranges must differ, support overnight hours, and use 0-24 for all-day access. "
 					+ "image is an optional PNG/JPEG file up to 5 MiB. Supply exactly one image source. "
 					+ "Status and timestamps are server-controlled; unknown JSON fields are rejected.";
 				reportForm.Examples = new Dictionary<String, IOpenApiExample> {
 					["existingImage"] = Example("Report with an existing image path", new {
 						metadata = JsonSerializer.Serialize(new CreateAEDReportRequest(
-							1, 1, "/photos/existing-aed.jpg", "On the wall beside reception.", 8, 20, true, 85), JsonOptions)
+							1, 1, "/photos/existing-aed.jpg", "On the wall beside reception.", 8, 20, true, 85,
+							52.229700, 21.012200, null, null, null, null, null, null), JsonOptions)
 					}),
 					["upload"] = Example("Metadata for an image upload; select a file in image", new {
 						metadata = JsonSerializer.Serialize(new CreateAEDReportRequest(
-							1, null, null, "Inside the entrance lobby.", null, null, null, null), JsonOptions)
+							1, null, null, "Inside the entrance lobby.", null, null, null, null,
+							52.229700, 21.012200, 52.229676, 21.012229, "Warszawa", "Example Street", "00-001", 10), JsonOptions)
 					})
 				};
 				ResponseContent(operation, "201", "Report created. Uploaded photoUrl values are relative filenames, not public download URLs.")
@@ -42,7 +48,8 @@ public sealed class ApiDocumentationTransformer : IOpenApiOperationTransformer {
 							42, 1, 1, "b64c86c6c07c493cad9d97015fcb5811.png",
 							"On the wall beside reception.", 8, 20, true, 85,
 							new DateTime(2026, 11, 22, 8, 0, 0, DateTimeKind.Utc),
-							new DateTime(2026, 11, 22, 8, 0, 0, DateTimeKind.Utc), ReportStatus.Submitted))
+							new DateTime(2026, 11, 22, 8, 0, 0, DateTimeKind.Utc), ReportStatus.Submitted,
+							52.229700, 21.012200, 52.229676, 21.012229, "Warszawa", "Example Street", "00-001", 10))
 					};
 				ResponseContent(operation, "400", "Invalid metadata, unknown user/AED, empty upload, or missing/conflicting image sources.", "application/problem+json");
 				ResponseContent(operation, "409", "Database constraints prevented creating the report; newly uploaded files are removed.", "application/problem+json");

@@ -165,7 +165,7 @@ Registration/login endpoints are still not implemented by this seed.
 referencing `Users`, optional `AEDId` referencing `AEDs`, required nonblank `PhotoUrl`
 (a URL or file path, not image bytes), required nonblank device-placement
 `Description`, optional `AvailabilityStartHour`/`AvailabilityEndHour`, optional
-`IsPubliclyAccessible`, required `Created` and `LastUpdated`
+`IsPubliclyAccessible`, optional integer `Rating` (0-100 inclusive), required `Created` and `LastUpdated`
 timestamps, and required `Status`: `Submitted=0`, `UnderReview=1`,
 `Confirmed=2`, `Rejected=3`. A report may concern an AED not yet in the database.
 Reports can upload photos using the endpoint below; seeded photo paths are placeholders.
@@ -180,6 +180,14 @@ without a nonblank description receive the explicit placeholder
 `Legacy report: device placement description was not provided.`
 Existing descriptions, opening hours, accessibility flags, and other report data
 are preserved on reruns; new optional fields remain `NULL` when unknown.
+`013-report-rating.sql` adds the nullable rating and enforces the inclusive
+0-100 range without assigning ratings to old reports or changing known ratings.
+Report ratings are independent of the existing AED `DataRating` enum.
+Optional `ReporterLatitude`/`ReporterLongitude` record the reporter's GPS separately
+from the AED location snapshot: `Latitude`, `Longitude`, `CityName`, `StreetName`,
+`PostalCode` (up to 6 characters), and integer `BuildingNumber`.
+`015-report-location.sql` adds these nullable columns and coordinate checks without
+inventing locations for existing reports. Known snapshots are preserved on reruns.
 As with AED timestamps, application code supplies and updates report timestamps
 in UTC, with microsecond database precision.
 
@@ -189,7 +197,8 @@ tables and their EF entities do not add authentication or authorization.
 
 For an existing database, run either initializer below to apply
 `009-users-and-aed-reports.sql`, `010-user-password-hash.sql`,
-`011-required-report-photo.sql`, and `012-report-placement-metadata.sql`, then seed empty tables without replacing
+`011-required-report-photo.sql`, `012-report-placement-metadata.sql`, and
+`013-report-rating.sql` and `015-report-location.sql`, then seed empty tables without replacing
 existing records.
 
 ### Creating a report
@@ -209,10 +218,36 @@ such as 22-6 are allowed, and 0-24 means all day. Optional
 `isPubliclyAccessible` is `true` when anyone can access the device, `false` when
 access is restricted, or null/omitted when unknown. These are report details;
 submitting them does not automatically update an existing AED.
+Optional `rating` must be a whole number from **0 to 100** inclusive; omit it
+or use null when unknown. Fractions, invalid types, and out-of-range values
+return `400`. Only description is mandatory among these new report details.
+
+Optional `reporterLatitude` and `reporterLongitude` must be supplied together;
+omit both or set both to null when the reporter's GPS is unknown. All coordinates
+must be finite numbers, with latitude in **[-90, 90]** and longitude in
+**[-180, 180]**.
+
+An explicit `aedId` takes precedence, even if it is far from the reporter.
+Otherwise, the endpoint links the nearest AED **within 100 meters** of the
+reporter's GPS using great-circle distance; equal distances select the lowest
+AED ID. This includes private and closed devices: reporting a device does not
+require it to be currently available. Devices without both coordinates cannot
+be matched automatically.
+
+Optional `latitude`, `longitude`, `cityName`, `streetName`, `postalCode` (at most
+6 characters), and integer `buildingNumber` describe the **AED**, not the
+reporter. Known fields from the linked AED and its address take precedence;
+only missing fields fall back to request values. Address text is trimmed and
+blank text becomes null. Location fields may be omitted or null, including
+independently unknown AED coordinates. The resolved location is stored as a
+snapshot on the report. When nothing matches, the supplied location stays on
+the report with `aedId: null`; no AED or address is created or modified.
+Reporter GPS is never silently substituted for missing AED coordinates.
+Requests without location fields remain supported.
 
 ```powershell
 curl.exe "https://localhost:7231/api/zgloszenia" `
-  --form 'metadata={"userId":1,"aedId":1,"description":"On the wall beside reception.","availabilityStartHour":8,"availabilityEndHour":20,"isPubliclyAccessible":true}' `
+  --form 'metadata={"userId":1,"aedId":1,"description":"On the wall beside reception.","availabilityStartHour":8,"availabilityEndHour":20,"isPubliclyAccessible":true,"rating":85}' `
   --form 'image=@C:\photos\aed.png'
 ```
 
@@ -220,7 +255,7 @@ Without uploading a file:
 
 ```powershell
 curl.exe "https://localhost:7231/api/zgloszenia" `
-  --form 'metadata={"userId":1,"description":"Inside the main entrance.","photoUrl":"https://example.test/photos/aed.jpg"}'
+  --form 'metadata={"userId":1,"description":"Inside the main entrance.","photoUrl":"https://example.test/photos/aed.jpg","reporterLatitude":52.2297,"reporterLongitude":21.0122,"latitude":52.229676,"longitude":21.012229,"cityName":"Warszawa","streetName":"Example Street","postalCode":"00-001","buildingNumber":10}'
 ```
 
 Uploads must be nonempty PNG/JPEG files, at most **5 MiB (5,242,880 bytes)**.
@@ -234,7 +269,10 @@ to 5 MiB plus 128 KiB of form overhead.
 The server sets both timestamps to the current UTC time and status to
 `Submitted`. A successful request returns `201` with `id`, `userId`, `aedId`,
 `photoUrl`, `description`, `availabilityStartHour`, `availabilityEndHour`,
-`isPubliclyAccessible`, `created`, `lastUpdated`, and `status`. Uploaded `photoUrl` values
+`isPubliclyAccessible`, `rating`, `created`, `lastUpdated`, `status`,
+`reporterLatitude`, `reporterLongitude`, `latitude`, `longitude`, `cityName`,
+`streetName`, `postalCode`, and `buildingNumber`. Unknown location fields are null.
+Uploaded `photoUrl` values
 are filenames relative to the configured storage directory, **not public image
 URLs**. No image-download endpoint is exposed. Supplied external paths/URLs
 are trimmed but never fetched; their file contents cannot be validated here.
@@ -289,11 +327,13 @@ The Bash script uses Docker directly and can be invoked from any working
 directory by providing its path.
 
 Both scripts create missing tables, apply `003-unique-owner-regon.sql`,
-`004-translation-profiles.sql`, `005-aed-availability.sql`,
+`004-translation-profiles.sql`, then `014-aed-data-rating.sql` before the older
+availability/nullability upgrades so existing rating values are renamed first.
+They then apply `005-aed-availability.sql`,
 `006-aed-coordinates.sql`, `007-nullable-import-data.sql`,
 `008-aed-owner.sql`, `009-users-and-aed-reports.sql`,
 `010-user-password-hash.sql`, `011-required-report-photo.sql`, and
-`012-report-placement-metadata.sql`, then execute
+`012-report-placement-metadata.sql`, `013-report-rating.sql`, and `015-report-location.sql`, then execute
 `002-populate-tables.sql`.
 Each location/AED/owner/user/report sample-data table receives rows only when completely
 empty; partially populated tables are left unchanged except that a missing
@@ -595,7 +635,7 @@ For an existing database, run `.\scripts\Initialize-Database.ps1` to apply
 historical owner is inferred from location. Reimport CSV data with owner
 mappings, such as `openaedmap-2`, to populate these explicit links.
 
-## AED access, hours, and rating
+## AED access, hours, and data rating
 
 The `AED` entity and `AEDs` table include:
 
@@ -604,7 +644,7 @@ The `AED` entity and `AEDs` table include:
 | `Access` | `AEDAccess.Open` (0), `Emergency` (1), `Private` (2), or `NULL` for unknown |
 | `AvailabilityStartHour` | Whole hour, 0-23, or `NULL` |
 | `AvailabilityEndHour` | Whole hour, 0-24, or `NULL` |
-| `Rating` | `AEDRating.MissingData` (0), `Fine` (1), or `NULL` for unknown |
+| `DataRating` | `AEDRating.MissingData` (0), `Fine` (1), or `NULL` for unknown |
 
 Availability hours may independently be unknown (`NULL`).
 Equal known hours are invalid. `0` to `24` means all-day availability; overnight ranges
@@ -612,14 +652,21 @@ such as `22` to `6` are allowed. Enums are stored as checked integers and serial
 to their names when used in JSON.
 
 The initial schema and sample AED rows include these fields. For an existing
-database, run this from Ubuntu WSL in the project directory:
+database, run either database initializer, for example from PowerShell:
 
-```sh
-docker compose exec -T mariadb sh -c 'MYSQL_PWD="$MARIADB_PASSWORD" exec mariadb --user="$MARIADB_USER" "$MARIADB_DATABASE"' < database/005-aed-availability.sql
+```powershell
+.\scripts\Initialize-Database.ps1
 ```
 
-The upgrade is safe to rerun. Existing AEDs retain their original data and gain
-unknown access/hours/rating; no access or availability is
+`014-aed-data-rating.sql` renames the old `AEDs.Rating` column to
+`AEDs.DataRating` without changing values, enum meanings, or nullability.
+Stored translation destinations are updated from `AEDs.Rating` to
+`AEDs.DataRating`; new profiles must use the new destination name. CSV source
+header names need not change. `AEDReports.Rating` remains a separate nullable
+0-100 integer and is not renamed.
+
+The upgrades are safe to rerun. Existing AEDs retain their original data and gain
+unknown access/hours/data rating where fields were missing; no access or availability is
 inferred from existing rows.
 
 ## AED GPS coordinates

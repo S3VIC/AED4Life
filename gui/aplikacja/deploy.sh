@@ -29,12 +29,12 @@ fi
 # osobne repo git tylko dla tej strony (nie rusza innych repozytoriow na VM)
 command -v git >/dev/null || sudo apt-get install -y git
 cd "$SRC"
-[ -d .git ] || { git init -q -b main 2>/dev/null || git init -q; git config user.name "Punkt Zycia deploy"; git config user.email "deploy@punktzycia.local"; }
+[ -d .git ] || { git init -q -b main 2>/dev/null || git init -q; git config user.name "AED4Life deploy"; git config user.email "deploy@punktzycia.local"; }
 git add -A && git commit -qm "Wdrozenie $(date '+%Y-%m-%d %H:%M')" && echo "Git: zapisano wersje w $SRC ($(git rev-parse --short HEAD))" || echo "Git: brak zmian"
 cd - >/dev/null
 
 sudo mkdir -p "$WEB"
-sudo cp "$SRC"/index.html "$SRC"/sw.js "$SRC"/manifest.webmanifest "$SRC"/icon-*.png "$WEB"/
+sudo cp "$SRC"/index.html "$SRC"/sw.js "$SRC"/manifest.webmanifest "$SRC"/icon-*.png "$SRC"/AED4life_logo.png "$WEB"/
 sudo cp "$SRC"/aedverify/static/weryfikuj.html "$SRC"/aedverify/static/panel.html "$SRC"/aedverify/static/foto.js "$WEB"/
 sudo chmod -R a+rX "$WEB"; sudo chown -R caddy:caddy "$WEB" 2>/dev/null || true
 
@@ -52,7 +52,7 @@ sudo chmod 600 /etc/punktzycia/admin_token /etc/punktzycia/env
 sudo chown -R punktzycia:punktzycia "$DATA"
 sudo tee /etc/systemd/system/punktzycia-api.service >/dev/null <<UNIT
 [Unit]
-Description=Punkt Zycia - weryfikacja AED
+Description=AED4Life - weryfikacja AED
 After=network.target
 [Service]
 User=punktzycia

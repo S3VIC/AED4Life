@@ -55,7 +55,7 @@ public sealed class AED4LifeDbContext(DbContextOptions<AED4LifeDbContext> option
 		modelBuilder.Entity<AED>(entity => {
 			entity.ToTable("AEDs", table => {
 				table.HasCheckConstraint("CK_AEDs_Access", "`Access` IS NULL OR `Access` IN (0, 1, 2)");
-				table.HasCheckConstraint("CK_AEDs_Rating", "`Rating` IS NULL OR `Rating` IN (0, 1)");
+				table.HasCheckConstraint("CK_AEDs_DataRating", "`DataRating` IS NULL OR `DataRating` IN (0, 1)");
 				table.HasCheckConstraint("CK_AEDs_Latitude", "`Latitude` IS NULL OR `Latitude` BETWEEN -90 AND 90");
 				table.HasCheckConstraint("CK_AEDs_Longitude", "`Longitude` IS NULL OR `Longitude` BETWEEN -180 AND 180");
 				table.HasCheckConstraint("CK_AEDs_AvailabilityHours",
@@ -71,7 +71,7 @@ public sealed class AED4LifeDbContext(DbContextOptions<AED4LifeDbContext> option
 			entity.Property(aed => aed.Latitude).HasColumnType("double");
 			entity.Property(aed => aed.Longitude).HasColumnType("double");
 			entity.Property(aed => aed.Access).HasConversion<Int32>();
-			entity.Property(aed => aed.Rating).HasConversion<Int32>();
+			entity.Property(aed => aed.DataRating).HasConversion<Int32>();
 			entity.HasOne<Address>().WithMany().HasForeignKey(aed => aed.AddressId)
 				.OnDelete(DeleteBehavior.Restrict)
 				.HasConstraintName("FK_AEDs_Address_AddressId");
@@ -114,6 +114,11 @@ public sealed class AED4LifeDbContext(DbContextOptions<AED4LifeDbContext> option
 				table.HasCheckConstraint("CK_AEDReports_Description", "`Description` REGEXP '[^[:space:]]'");
 				table.HasCheckConstraint("CK_AEDReports_IsPubliclyAccessible", "`IsPubliclyAccessible` IS NULL OR `IsPubliclyAccessible` IN (0, 1)");
 				table.HasCheckConstraint("CK_AEDReports_Rating", "`Rating` IS NULL OR `Rating` BETWEEN 0 AND 100");
+				table.HasCheckConstraint("CK_AEDReports_ReporterLatitude", "`ReporterLatitude` IS NULL OR `ReporterLatitude` BETWEEN -90 AND 90");
+				table.HasCheckConstraint("CK_AEDReports_ReporterLongitude", "`ReporterLongitude` IS NULL OR `ReporterLongitude` BETWEEN -180 AND 180");
+				table.HasCheckConstraint("CK_AEDReports_ReporterCoordinates", "(`ReporterLatitude` IS NULL) = (`ReporterLongitude` IS NULL)");
+				table.HasCheckConstraint("CK_AEDReports_Latitude", "`Latitude` IS NULL OR `Latitude` BETWEEN -90 AND 90");
+				table.HasCheckConstraint("CK_AEDReports_Longitude", "`Longitude` IS NULL OR `Longitude` BETWEEN -180 AND 180");
 				table.HasCheckConstraint("CK_AEDReports_AvailabilityHours",
 					"(`AvailabilityStartHour` IS NULL OR `AvailabilityStartHour` BETWEEN 0 AND 23) "
 					+ "AND (`AvailabilityEndHour` IS NULL OR `AvailabilityEndHour` BETWEEN 0 AND 24) "
@@ -125,6 +130,11 @@ public sealed class AED4LifeDbContext(DbContextOptions<AED4LifeDbContext> option
 			entity.Property(report => report.Created).HasColumnType("datetime(6)");
 			entity.Property(report => report.LastUpdated).HasColumnType("datetime(6)");
 			entity.Property(report => report.Status).HasConversion<Int32>();
+			entity.Property(report => report.ReporterLatitude).HasColumnType("double");
+			entity.Property(report => report.ReporterLongitude).HasColumnType("double");
+			entity.Property(report => report.Latitude).HasColumnType("double");
+			entity.Property(report => report.Longitude).HasColumnType("double");
+			entity.Property(report => report.PostalCode).HasMaxLength(6);
 			entity.HasOne<User>().WithMany().HasForeignKey(report => report.UserId)
 				.OnDelete(DeleteBehavior.Restrict);
 			entity.HasOne<AED>().WithMany().HasForeignKey(report => report.AEDId)

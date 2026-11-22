@@ -1,0 +1,81 @@
+﻿miasto,ulica,kod_pocztowy,numer_budynku,wlasciciel,regon,czy_publiczny,numer_seryjny,szerokosc,dlugosc,dostep,godzina_od,godzina_do,ocena
+"Toruń","Cicha",87-222,130,"Hotel ""Pod Dębem""",326492399,false,DEMO-AED-0001,53.029835,18.644953,1,6,20,1
+"Zielona Góra","Reymonta",65-621,131,"Dworzec Autobusowy PKS",288169159,1,DEMO-AED-0002,51.918659,15.564938,2,6,22,0
+"Gdańsk","Cicha",80-321,4,"Dworzec Autobusowy PKS",408504308,1,DEMO-AED-0003,54.382931,18.634627,0,9,22,1
+"Gdańsk","Mickiewicza",80-636,97,"Przychodnia Zdrowia nr 24",900201020,true,DEMO-AED-0004,54.347662,18.623992,1,8,22,NULL
+"Gdynia","Słoneczna",81-530,45,"Dworzec Autobusowy PKS",288169159,true,DEMO-AED-0005,54.522013,18.495917,0,8,22,1
+"Rzeszów","Kwiatowa",35-432,26,"Biurowiec ""Atrium 6""",971276442,false,DEMO-AED-0006,50.074625,22.021520,0,7,18,1
+"Kielce","Rybacka",25-504,102,"Szkoła Podstawowa nr 17",781627002,true,DEMO-AED-0007,50.897760,20.620907,2,9,18,0
+"Sopot","Polna",81-694,111,"Hotel ""Pod Dębem""",668896379,false,DEMO-AED-0008,54.412267,18.515605,0,0,24,1
+"Lublin","Morska",20-139,122,"Szkoła Podstawowa nr 7",837846956,true,DEMO-AED-0009,51.253781,22.596633,1,9,18,NULL
+"Olsztyn","Kolejowa",10-013,15,"Centrum Handlowe ""Arkada 26""",860210733,0,DEMO-AED-0010,53.754220,20.429474,0,8,20,0
+"Zielona Góra","Reymonta",65-098,58,"Hotel ""Pod Dębem""",993538556,false,DEMO-AED-0011,51.945815,15.530536,0,0,24,0
+"Olsztyn","Słoneczna",10-527,90,"Hotel ""Pod Dębem""",363428280,false,DEMO-AED-0012,53.742128,20.539448,1,9,16,1
+"Sopot","Lipowa",81-297,,"Dworzec Autobusowy PKS",309702880,1,,54.437548,18.502272,1,6,18,0
+"Gdynia","Parkowa",81-571,4,"Hotel ""Pod Dębem""",668896379,0,DEMO-AED-0014,54.478921,18.479366,0,8,20,1
+"Gdynia","Morska",81-955,3,"Liceum Ogólnokształcące nr 22",013346628,true,DEMO-AED-0015,54.520413,18.491637,0,8,22,1
+"Białystok","Zamkowa",15-626,47,"Szkoła Podstawowa nr 17",781627002,1,DEMO-AED-0016,53.157208,23.217190,1,9,20,1
+"Zielona Góra","Akacjowa",65-160,102,"Centrum Handlowe ""Arkada 26""",860210733,false,DEMO-AED-0017,51.931546,15.545101,0,7,16,1
+"Gdańsk","Parkowa",80-540,62,"Biurowiec ""Atrium 6""",971276442,0,DEMO-AED-0018,54.357624,18.679163,1,9,18,0
+"Zielona Góra","Lipowa",65-284,116,"Biblioteka Publiczna nr 1",521783889,1,DEMO-AED-0019,51.959513,15.556386,1,7,22,1
+"Białystok","Reymonta",15-305,81,"Hotel ""Pod Dębem""",668896379,0,DEMO-AED-0020,53.137557,23.179459,0,8,18,1
+"Kielce","Zamkowa",25-756,138,"Hotel ""Pod Dębem""",993538556,false,DEMO-AED-0021,50.896799,20.611786,0,,,1
+"Rzeszów","Morska",35-600,37,"Dworzec Autobusowy PKS",309702880,1,DEMO-AED-0022,50.055657,21.946892,0,6,20,1
+"Kielce","Leśna",25-683,112,"Liceum Ogólnokształcące nr 1",141229128,true,DEMO-AED-0023,50.870345,20.647371,2,7,20,1
+"Gdynia","Leśna",81-078,92,"Szkoła Podstawowa nr 17",781627002,1,DEMO-AED-0024,54.513742,18.581072,2,0,24,1
+"Gdańsk","Polna",80-954,3,"Liceum Ogólnokształcące nr 22",013346628,1,DEMO-AED-0025,54.382955,18.672101,0,0,24,1
+"Gdynia","Kolejowa",81-620,147,"Hotel ""Pod Dębem""",668896379,0,DEMO-AED-0026,54.542686,18.568433,1,9,22,1
+"Gdańsk","Spacerowa",80-159,5,"Biblioteka Publiczna nr 1",521783889,true,DEMO-AED-0027,54.381912,18.637628,0,6,18,1
+"Toruń","Rybacka",87-436,29,"Biurowiec ""Atrium 24""",259517483,0,DEMO-AED-0028,52.980809,18.576049,2,6,22,1
+"Lublin","Rybacka",20-970,98,"Biurowiec ""Atrium 24""",259517483,0,DEMO-AED-0029,51.285706,22.588157,2,8,18,0
+"Zielona Góra","Kolejowa",65-628,127,"Biurowiec ""Atrium 24""",259517483,0,DEMO-AED-0030,51.916956,15.477131,0,9,20,0
+"Białystok","Morska",15-333,111,"Biurowiec ""Atrium 24""",259517483,false,DEMO-AED-0031,53.129851,23.207660,1,7,22,1
+"Lublin","Lipowa",20-876,135,"Biblioteka Publiczna nr 1",521783889,true,DEMO-AED-0032,51.262493,22.530620,0,0,24,1
+"Szczecin","Lipowa",70-503,25,"Liceum Ogólnokształcące nr 22",013346628,true,DEMO-AED-0033,53.420364,14.565828,2,9,18,1
+"Lublin","Cicha",20-567,,"Stacja Paliw Orlen 9",110314683,false,DEMO-AED-0034,51.271359,22.556223,0,6,20,NULL
+"Rzeszów","Fabryczna",35-139,159,"Liceum Ogólnokształcące nr 1",141229128,1,DEMO-AED-0035,50.018752,22.039442,0,7,22,0
+"Opole","Spacerowa",45-633,29,"Biurowiec ""Atrium 24""",259517483,false,DEMO-AED-0036,50.666927,17.868326,0,6,16,0
+"Białystok","Brzozowa",15-909,117,"Hotel ""Pod Dębem""",363428280,0,DEMO-AED-0037,53.147759,23.148310,1,8,22,1
+"Gdynia","Wiejska",81-030,119,"Liceum Ogólnokształcące nr 22",013346628,true,DEMO-AED-0038,54.530682,18.536170,0,6,20,1
+"Białystok","Sienkiewicza",15-888,24,"Biurowiec ""Atrium 6""",971276442,false,,53.131231,23.159429,2,0,24,1
+"Kielce","Kwiatowa",25-458,116,"Hotel ""Pod Dębem""",363428280,false,DEMO-AED-0040,50.878968,20.681647,0,8,20,1
+"Opole","Sienkiewicza",45-259,18,"Hotel ""Pod Dębem""",668896379,0,DEMO-AED-0041,50.689360,17.970209,1,9,18,NULL
+"Olsztyn","Pułaskiego",10-023,69,"Hotel ""Pod Dębem""",326492399,0,DEMO-AED-0042,53.810170,20.488258,1,9,22,0
+"Toruń","Mickiewicza",87-481,86,"Hotel ""Pod Dębem""",993538556,0,DEMO-AED-0043,53.027141,18.651539,1,9,18,1
+"Szczecin","Słoneczna",70-734,70,"Dworzec Autobusowy PKS",408504308,true,DEMO-AED-0044,53.462605,14.571042,0,0,24,1
+"Olsztyn","Sienkiewicza",10-930,,"Hotel ""Pod Dębem""",363428280,false,DEMO-AED-0045,53.765284,20.534282,0,6,16,1
+"Rzeszów","Fabryczna",35-277,88,"Szkoła Podstawowa nr 17",781627002,true,DEMO-AED-0046,50.010223,21.941451,1,8,22,1
+"Olsztyn","Polna",10-883,13,"Dworzec Autobusowy PKS",288169159,1,DEMO-AED-0047,53.802103,20.452357,0,6,22,0
+"Zielona Góra","Akacjowa",65-904,83,"Hotel ""Pod Dębem""",668896379,0,DEMO-AED-0048,51.928908,15.560268,1,0,24,NULL
+"Olsztyn","Spacerowa",10-712,117,"Dworzec Autobusowy PKS",408504308,true,DEMO-AED-0049,53.811651,20.494705,1,9,16,0
+"Toruń","Fabryczna",87-451,10,"Hotel ""Pod Dębem""",993538556,false,,53.033137,18.635246,2,7,22,1
+"Szczecin","Reymonta",70-131,,"Biblioteka Publiczna nr 1",521783889,true,DEMO-AED-0051,53.428440,14.545191,1,7,22,1
+"Gdańsk","Reymonta",80-485,86,"Stacja Paliw Orlen 9",110314683,0,DEMO-AED-0052,54.359865,18.627480,2,7,20,1
+"Szczecin","Cicha",70-054,133,"Hotel ""Pod Dębem""",363428280,false,DEMO-AED-0053,53.410431,14.591338,0,8,18,0
+"Gdańsk","Lipowa",80-300,46,"Centrum Handlowe ""Arkada 27""",159929816,0,DEMO-AED-0054,54.330668,18.597059,0,9,22,0
+"Białystok","Pułaskiego",15-976,150,"Hotel ""Pod Dębem""",363428280,false,DEMO-AED-0055,53.099291,23.127786,1,6,16,1
+"Rzeszów","Fabryczna",35-646,112,"Dworzec Autobusowy PKS",408504308,1,DEMO-AED-0056,50.009337,22.046015,0,7,22,NULL
+"Zielona Góra","Zamkowa",65-054,116,"Hotel ""Pod Dębem""",993538556,0,DEMO-AED-0057,51.956894,15.500673,0,6,16,1
+"Szczecin","Leśna",70-809,128,"Hotel ""Pod Dębem""",668896379,false,DEMO-AED-0058,53.459164,14.510189,0,,,1
+"Kielce","Brzozowa",25-549,106,"Liceum Ogólnokształcące nr 9",266088589,true,DEMO-AED-0059,50.836525,20.625085,0,,,1
+"Kielce","Kolejowa",25-074,159,"Szkoła Podstawowa nr 7",837846956,1,DEMO-AED-0060,50.835788,20.647094,0,9,16,1
+"Opole","Spacerowa",45-421,147,"Dworzec Autobusowy PKS",408504308,true,DEMO-AED-0061,50.689846,17.968110,0,9,18,1
+"Toruń","Polna",87-667,135,"Hotel ""Pod Dębem""",668896379,0,DEMO-AED-0062,53.013098,18.596573,1,0,24,1
+"Kielce","Wiejska",25-273,88,"Fabryka Mebli Meblex",074279953,0,DEMO-AED-0063,50.831932,20.622419,1,0,24,1
+"Gdynia","Mickiewicza",81-127,19,"Fabryka Mebli Meblex",074279953,0,DEMO-AED-0064,54.492725,18.482761,1,8,20,1
+"Rzeszów","Brzozowa",35-017,85,"Dworzec Autobusowy PKS",309702880,1,DEMO-AED-0065,50.053653,21.940828,0,7,16,1
+"Gdynia","Morska",81-548,159,"Szkoła Podstawowa nr 17",781627002,true,DEMO-AED-0066,54.544087,18.587549,0,8,22,NULL
+"Białystok","Spacerowa",15-128,,"Liceum Ogólnokształcące nr 1",141229128,1,DEMO-AED-0067,53.105261,23.171359,1,,,1
+"Opole","Słoneczna",45-868,,"Hotel ""Pod Dębem""",993538556,false,DEMO-AED-0068,50.676027,17.954421,0,6,16,0
+"Lublin","Spacerowa",20-343,101,"Fabryka Mebli Meblex",074279953,0,DEMO-AED-0069,51.211372,22.581523,1,9,16,1
+"Szczecin","Morska",70-278,134,"Hotel ""Pod Dębem""",363428280,false,DEMO-AED-0070,53.423401,14.606115,2,,,0
+"Białystok","Kolejowa",15-120,77,"Stacja Paliw Orlen 9",110314683,false,DEMO-AED-0071,53.169085,23.130209,0,6,18,1
+"Opole","Pułaskiego",45-268,17,"Przychodnia Zdrowia nr 24",900201020,1,DEMO-AED-0072,50.637432,17.888542,2,8,16,1
+"Toruń","Akacjowa",87-821,90,"Hotel ""Pod Dębem""",363428280,false,DEMO-AED-0073,52.998142,18.573371,0,7,18,1
+"Lublin","Kolejowa",20-225,118,"Liceum Ogólnokształcące nr 9",266088589,true,DEMO-AED-0074,51.218347,22.569247,2,6,16,NULL
+"Sopot","Mickiewicza",81-945,117,"Fabryka Mebli Meblex",074279953,0,DEMO-AED-0075,54.440178,18.533403,0,8,20,0
+"Sopot","Reymonta",81-043,112,"Biblioteka Publiczna nr 1",521783889,true,DEMO-AED-0076,54.422180,18.547358,0,,,1
+"Kielce","Pułaskiego",25-565,14,"Dworzec Autobusowy PKS",309702880,1,DEMO-AED-0077,50.841576,20.687542,0,7,22,1
+"Szczecin","Fabryczna",70-131,20,"Fabryka Mebli Meblex",074279953,0,DEMO-AED-0078,53.455621,14.515084,1,7,16,1
+"Szczecin","Fabryczna",70-631,146,"Szkoła Podstawowa nr 17",781627002,true,DEMO-AED-0079,53.446944,14.593704,2,9,20,0
+"Opole","Brzozowa",45-559,44,"Dworzec Autobusowy PKS",408504308,1,DEMO-AED-0080,50.637828,17.957129,1,9,22,1

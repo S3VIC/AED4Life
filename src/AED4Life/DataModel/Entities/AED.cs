@@ -14,5 +14,5 @@ public class AED {
 	public AEDAccess? Access { get; set; }
 	public Int32? AvailabilityStartHour { get; set; }
 	public Int32? AvailabilityEndHour { get; set; }
-	public AEDRating? Rating { get; set; }
+	public AEDRating? DataRating { get; set; }
 }

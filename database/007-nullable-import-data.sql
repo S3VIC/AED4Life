@@ -18,10 +18,10 @@ ALTER TABLE `AEDOwners`
 ALTER TABLE `AEDs`
     MODIFY COLUMN `AddressId` BIGINT NULL,
     MODIFY COLUMN `SerialNumber` LONGTEXT NULL,
-    MODIFY COLUMN `Rating` INT NULL,
-    DROP CONSTRAINT IF EXISTS `CK_AEDs_Rating`,
+    MODIFY COLUMN `DataRating` INT NULL,
+    DROP CONSTRAINT IF EXISTS `CK_AEDs_DataRating`,
     DROP CONSTRAINT IF EXISTS `CK_AEDs_AvailabilityHours`,
-    ADD CONSTRAINT `CK_AEDs_Rating` CHECK (`Rating` IS NULL OR `Rating` IN (0, 1)),
+    ADD CONSTRAINT `CK_AEDs_DataRating` CHECK (`DataRating` IS NULL OR `DataRating` IN (0, 1)),
     ADD CONSTRAINT `CK_AEDs_AvailabilityHours` CHECK (
         (`AvailabilityStartHour` IS NULL OR `AvailabilityStartHour` BETWEEN 0 AND 23)
         AND (`AvailabilityEndHour` IS NULL OR `AvailabilityEndHour` BETWEEN 0 AND 24)

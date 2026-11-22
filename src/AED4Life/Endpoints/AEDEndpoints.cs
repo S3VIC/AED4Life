@@ -80,21 +80,16 @@ public static class AedEndpoints {
 
 	private static IQueryable<NearestAEDResponse> QueryNearest(AED4LifeDbContext database, Double latitude, Double longitude) {
 		Int32 hour = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, AvailabilityTimeZone).Hour;
-		const Double degreesToRadians = Math.PI / 180;
-		Double originCosine = Math.Cos(latitude * degreesToRadians);
-		return
+		var available =
 			from aed in database.AEDs.AsNoTracking()
-			where aed.Latitude != null && aed.Longitude != null
 			where aed.Access == null || aed.Access == AEDAccess.Open || aed.Access == AEDAccess.Emergency
 			where aed.AvailabilityStartHour == null || aed.AvailabilityEndHour == null
 				|| (aed.AvailabilityStartHour < aed.AvailabilityEndHour
 					? aed.AvailabilityStartHour <= hour && hour < aed.AvailabilityEndHour
 					: aed.AvailabilityStartHour <= hour || hour < aed.AvailabilityEndHour)
-			let latitudeSine = Math.Sin((aed.Latitude!.Value - latitude) * degreesToRadians / 2)
-			let longitudeSine = Math.Sin((aed.Longitude!.Value - longitude) * degreesToRadians / 2)
-			// The haversine term orders great-circle distances without an inverse trigonometric calculation.
-			let distance = latitudeSine * latitudeSine
-				+ originCosine * Math.Cos(aed.Latitude!.Value * degreesToRadians) * longitudeSine * longitudeSine
+			select aed;
+		return
+			from aed in available.OrderByDistance(latitude, longitude)
 			join owner in database.AEDOwners on aed.OwnerId equals owner.Id into owners
 			from owner in owners.DefaultIfEmpty()
 			join address in database.Addresses on aed.AddressId equals address.Id into addresses
@@ -105,7 +100,6 @@ public static class AedEndpoints {
 			from street in streets.DefaultIfEmpty()
 			join postalCode in database.PostalCodes on address.PostalCodeId equals postalCode.Id into postalCodes
 			from postalCode in postalCodes.DefaultIfEmpty()
-			orderby distance, aed.Id
 			select new NearestAEDResponse(aed.Id, aed.Latitude!.Value, aed.Longitude!.Value,
 				owner == null ? null : owner.Name, city == null ? null : city.Name,
 				street == null ? null : street.Name, postalCode == null ? null : postalCode.Code,

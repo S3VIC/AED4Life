@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-    Starts the Punkt Zycia GUI (gui/aplikacja) on a local web server. No arguments needed.
+    Starts the AED4Life GUI (gui/aplikacja) on a local web server. No arguments needed.
     Picks the first free port in 8000-8020 and opens the browser.
     The GUI fetches AED data from the AED4Life WebAPI by itself.
 #>
@@ -30,7 +30,7 @@ foreach ($port in 8000..8020) {
 if (-not $listener) { throw 'Could not start the server: ports 8000-8020 are all in use.' }
 
 $url = "http://localhost:$port/"
-Write-Host "`n  Punkt Zycia is running at: $url" -ForegroundColor Green
+Write-Host "`n  AED4Life is running at: $url" -ForegroundColor Green
 Write-Host '  Press Ctrl+C to stop.' -ForegroundColor DarkGray
 
 try {

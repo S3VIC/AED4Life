@@ -83,7 +83,7 @@ JOIN StreetSlots AS street ON street.Slot = MOD(sample.StreetSlot - 1, street.Sl
 WHERE NOT EXISTS (SELECT 1 FROM `AEDOwners`);
 
 INSERT INTO `AEDs` (`AddressId`, `OwnerId`, `Created`, `LastUpdated`, `SerialNumber`,
-    `Access`, `AvailabilityStartHour`, `AvailabilityEndHour`, `Rating`, `Latitude`, `Longitude`)
+    `Access`, `AvailabilityStartHour`, `AvailabilityEndHour`, `DataRating`, `Latitude`, `Longitude`)
 WITH AddressSlots AS (
     SELECT Id, ROW_NUMBER() OVER (ORDER BY Id) AS Slot, COUNT(*) OVER () AS SlotCount
     FROM `Addresses`
@@ -92,11 +92,11 @@ WITH AddressSlots AS (
     FROM `AEDOwners`
 )
 SELECT address.Id, owner.Id, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), sample.SerialNumber,
-    sample.Access, sample.AvailabilityStartHour, sample.AvailabilityEndHour, sample.Rating,
+    sample.Access, sample.AvailabilityStartHour, sample.AvailabilityEndHour, sample.DataRating,
     sample.Latitude, sample.Longitude
 FROM (
     SELECT 1 AS AddressSlot, 'AED-7F3A9C21' AS SerialNumber,
-        0 AS Access, 0 AS AvailabilityStartHour, 24 AS AvailabilityEndHour, 1 AS Rating,
+        0 AS Access, 0 AS AvailabilityStartHour, 24 AS AvailabilityEndHour, 1 AS DataRating,
         52.229676 AS Latitude, 21.012229 AS Longitude
     UNION ALL SELECT 2, 'AED-B82D4E60', 1, 8, 20, 1, 53.123480, 18.008438
     UNION ALL SELECT 3, 'AED-19C6F4A8', 2, 9, 17, 0, 50.043000, 21.587000
@@ -136,16 +136,20 @@ ORDER BY address.Id
 LIMIT 1;
 
 INSERT INTO `AEDReports` (`UserId`, `AEDId`, `PhotoUrl`, `Created`, `LastUpdated`, `Status`,
-    `Description`, `AvailabilityStartHour`, `AvailabilityEndHour`, `IsPubliclyAccessible`, `Rating`)
+    `Description`, `AvailabilityStartHour`, `AvailabilityEndHour`, `IsPubliclyAccessible`, `Rating`,
+    `ReporterLatitude`, `ReporterLongitude`, `Latitude`, `Longitude`, `CityName`, `StreetName`, `PostalCode`, `BuildingNumber`)
 WITH UserSlots AS (
     SELECT Id, ROW_NUMBER() OVER (ORDER BY Id) AS Slot, COUNT(*) OVER () AS SlotCount
     FROM `Users`
 ), AEDSlots AS (
-    SELECT Id, ROW_NUMBER() OVER (ORDER BY Id) AS Slot, COUNT(*) OVER () AS SlotCount
+    SELECT Id, AddressId, Latitude, Longitude, ROW_NUMBER() OVER (ORDER BY Id) AS Slot, COUNT(*) OVER () AS SlotCount
     FROM `AEDs`
 )
 SELECT user.Id, aed.Id, sample.PhotoUrl, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), sample.Status,
-    sample.Description, sample.AvailabilityStartHour, sample.AvailabilityEndHour, sample.IsPubliclyAccessible, sample.Rating
+    sample.Description, sample.AvailabilityStartHour, sample.AvailabilityEndHour, sample.IsPubliclyAccessible, sample.Rating,
+    CASE WHEN aed.Latitude IS NOT NULL AND aed.Longitude IS NOT NULL THEN aed.Latitude END,
+    CASE WHEN aed.Latitude IS NOT NULL AND aed.Longitude IS NOT NULL THEN aed.Longitude END,
+    aed.Latitude, aed.Longitude, city.Name, street.Name, postalCode.Code, address.BuildingNumber
 FROM (
     SELECT 1 AS UserSlot, 1 AS AEDSlot, '/images/demo-aed.jpg' AS PhotoUrl, 0 AS Status,
         'In the entrance lobby, on the wall beside reception.' AS Description,
@@ -159,6 +163,10 @@ FROM (
 ) AS sample
 JOIN UserSlots AS user ON user.Slot = MOD(sample.UserSlot - 1, user.SlotCount) + 1
 LEFT JOIN AEDSlots AS aed ON aed.Slot = MOD(sample.AEDSlot - 1, aed.SlotCount) + 1
+LEFT JOIN `Addresses` AS address ON address.Id = aed.AddressId
+LEFT JOIN `Cities` AS city ON city.Id = address.CityId
+LEFT JOIN `Streets` AS street ON street.Id = address.StreetId
+LEFT JOIN `PostalCodes` AS postalCode ON postalCode.Id = address.PostalCodeId
 WHERE NOT EXISTS (SELECT 1 FROM `AEDReports`);
 
 COMMIT;

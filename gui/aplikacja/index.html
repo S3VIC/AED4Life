@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Punkt Życia – AED</title>
+<title>AED4Life – AED</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400..800&display=swap" rel="stylesheet">
 <meta name="description" content="Najbliższy sprawdzony defibrylator AED i telefon 112 w jednym dotknięciu. Krajowy rejestr AED zasilany przez instytucje i mieszkańców.">
 <meta name="theme-color" content="#ffffff">
-<meta property="og:title" content="Punkt Życia – najbliższy sprawdzony AED"><meta property="og:description" content="Jedno dotknięcie: trasa do najbliższego sprawdzonego defibrylatora i telefon 112."><meta property="og:type" content="website"><meta name="twitter:card" content="summary">
+<meta property="og:title" content="AED4Life – najbliższy sprawdzony AED"><meta property="og:description" content="Jedno dotknięcie: trasa do najbliższego sprawdzonego defibrylatora i telefon 112."><meta property="og:type" content="website"><meta name="twitter:card" content="summary">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Crect width='44' height='44' rx='12' fill='%23d0021b'/%3E%3Cpath d='M22 34s-10-6-10-13a5.5 5.5 0 0 1 10-3 5.5 5.5 0 0 1 10 3c0 7-10 13-10 13z' fill='%23fff'/%3E%3C/svg%3E">
 <style>
 /* VOICE: spokojna, urzędowa usługa publiczna; jedno oczywiste działanie na ekran
@@ -1027,7 +1027,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 </head>
 <body>
 <header class="top"><div class="wrap"><a class="skip" href="#tresc">Przejdź do treści</a>
-  <a class="brand" href="#start" aria-label="Punkt Życia – start"><svg width="38" height="38" viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="12" fill="#d0021b"/><g fill="#fff"><circle cx="15" cy="15" r="2.6"/><circle cx="20.5" cy="17" r="2.6"/><circle cx="23.5" cy="17" r="2.6"/><circle cx="29" cy="15" r="2.6"/><circle cx="11" cy="20" r="2.6"/><circle cx="33" cy="20" r="2.6"/><circle cx="13" cy="26" r="2.6"/><circle cx="31" cy="26" r="2.6"/><circle cx="17" cy="31" r="2.6"/><circle cx="27" cy="31" r="2.6"/><circle cx="22" cy="35" r="2.6"/></g></svg><span>Punkt Życia</span></a>
+  <a class="brand" href="#start" aria-label="AED4Life – start"><img src="AED4life_logo.png" width="46" height="38" alt="AED4Life" style="height:38px;width:auto;display:block"><span>AED4Life</span></a>
   <nav class="tabs" id="tabs" aria-label="Główna"></nav>
   <a href="#konto" class="who" id="who"></a>
 </div></header>
@@ -1176,18 +1176,11 @@ svg.leaflet-image-layer.leaflet-interactive path {
   <div id="repOut" aria-live="polite" style="margin-top:14px"></div>
 </section>
 
-<section class="view" id="v-trasa" aria-labelledby="h-tr">
-  <div class="phead"><a class="back" href="#mapa">‹ Mapa</a><h1 id="h-tr">Nagraj trasę do AED</h1><p class="lead" id="trLead"></p></div>
-  <div class="wiz" id="wiz"></div>
-  <div class="row" style="margin-top:14px"><button id="wAdd">+ Dodaj krok</button><button class="pri" id="wSave">Zapisz trasę</button></div>
-  <div id="wOut" aria-live="polite" style="margin-top:14px"></div>
-</section>
-
 <section class="view" id="v-moje" aria-labelledby="h-moje">
   <div class="phead"><a class="back" href="#start">‹ Start</a><h1 id="h-moje">Moje zgłoszenia</h1><p class="lead" id="mojeLead"></p></div>
   <div class="kpis" id="mojeKpi"></div>
   <div class="stackc" id="mojeList"></div>
-  <h2>Pomóż w okolicy</h2><p class="note" style="margin-top:-6px">Te AED nie mają jeszcze trasy od wejścia. Za każdą nagraną trasę +50 pkt.</p><div class="stackc" id="mojeTodo"></div>
+  
 </section>
 
 <section class="view" id="v-dysponent" aria-labelledby="h-dys">
@@ -1195,13 +1188,13 @@ svg.leaflet-image-layer.leaflet-interactive path {
   <div class="kpis" id="minKpi"></div>
   <div class="seg" role="tablist" aria-label="Sekcje panelu">
     <button role="tab" aria-selected="true" aria-controls="p-queue" id="t-queue" class="on">Do weryfikacji</button>
-    <button role="tab" aria-selected="false" aria-controls="p-cov" id="t-cov">Pokrycie kraju</button>
+    <button role="tab" aria-selected="false" aria-controls="p-cov" id="t-cov">Weryfikacja danych</button>
     <button role="tab" aria-selected="false" aria-controls="p-prov" id="t-prov">Dostawcy</button>
     <button role="tab" aria-selected="false" aria-controls="p-csv" id="t-csv">Import danych</button>
     <button role="tab" aria-selected="false" aria-controls="p-form" id="t-form">Dodaj AED</button>
   </div>
   <div id="p-queue" role="tabpanel" aria-labelledby="t-queue"><p class="note">Usuwaj tylko AED zdemontowane. Przy wątpliwościach wybierz „Do sprawdzenia”: rekord zostaje na mapie z ostrzeżeniem.</p><div class="stackc" id="queue"></div></div>
-  <div id="p-cov" role="tabpanel" aria-labelledby="t-cov" hidden><p class="note">Miasta posortowane od tych, które wymagają działania. Dane przykładowe.</p><div class="stackc" id="cov"></div></div>
+  <div id="p-cov" role="tabpanel" aria-labelledby="t-cov" hidden><p class="note">Odsetek AED o zweryfikowanych danych w całym zbiorze i w miastach (od najniższego).</p><div class="stackc" id="cov"></div></div>
   <div id="p-prov" role="tabpanel" aria-labelledby="t-prov" hidden><p class="note">Zbiory dostawców w dane.gov.pl, z których powstaje krajowa lista. Dane przykładowe.</p><div class="provs" id="provsAdmin"></div></div>
   <div id="p-csv" role="tabpanel" aria-labelledby="t-csv" hidden>
     <div class="fsec"><h3>Plik od dysponenta</h3><p class="note" style="margin-top:-8px">CSV w układzie wzorcowego schematu. Przecinek lub średnik, UTF-8.</p>
@@ -1258,11 +1251,11 @@ svg.leaflet-image-layer.leaflet-interactive path {
 </section>
 
 <section class="view" id="v-akcja" aria-labelledby="h-akcja">
-  <div class="phead"><a class="back" href="#start">‹ Start</a><h1 id="h-akcja">Akcja „Punkt Życia”</h1><p class="lead">Wiesz, gdzie jest. Wiesz, że działa.</p></div>
+  <div class="phead"><a class="back" href="#start">‹ Start</a><h1 id="h-akcja">Akcja „AED4Life”</h1><p class="lead">Wiesz, gdzie jest. Wiesz, że działa.</p></div>
   <div class="split"><div class="card" style="display:grid;place-items:center"><div class="sticker">
       <svg width="56" height="56" viewBox="0 0 44 44" aria-hidden="true"><rect width="44" height="44" rx="12" fill="#d0021b"/><g fill="#fff"><circle cx="15" cy="15" r="2.6"/><circle cx="20.5" cy="17" r="2.6"/><circle cx="23.5" cy="17" r="2.6"/><circle cx="29" cy="15" r="2.6"/><circle cx="11" cy="20" r="2.6"/><circle cx="33" cy="20" r="2.6"/><circle cx="13" cy="26" r="2.6"/><circle cx="31" cy="26" r="2.6"/><circle cx="17" cy="31" r="2.6"/><circle cx="27" cy="31" r="2.6"/><circle cx="22" cy="35" r="2.6"/></g></svg>
       <b style="font-size:20px">Ten AED jest na mapie</b><div id="qr" role="img" aria-label="Kod QR do potwierdzenia AED PL-AED-00000001"></div><span style="font-size:14px">Zeskanuj i potwierdź: <b>jest i działa</b></span></div></div>
-    <div class="card"><h3>Jak to działa</h3><ol><li>Dysponent zgłasza AED albo wysyła plik.</li><li>Nagrywa trasę od wejścia i nakleja kod QR.</li><li>Przechodnie potwierdzają „jest” jednym dotknięciem.</li></ol>
+    <div class="card"><h3>Jak to działa</h3><ol><li>Dysponent zgłasza AED albo wysyła plik.</li><li>Nakleja kod QR przy urządzeniu.</li><li>Przechodnie potwierdzają „jest” jednym dotknięciem.</li></ol>
       <h3 style="margin-top:16px">Kolory</h3><div class="swatch"><div><i style="background:#d0021b"></i>Ratunek</div><div><i style="background:#0a7a3e"></i>AED dostępny</div><div><i style="background:#0b4fa3"></i>Działania</div><div><i style="background:#1a1d2e"></i>Tekst</div></div></div></div>
 </section>
 
@@ -1275,8 +1268,18 @@ svg.leaflet-image-layer.leaflet-interactive path {
   <div class="card" style="text-align:center;max-width:520px;margin:40px auto"><h1 id="h-lock" style="font-size:28px">Zaloguj się, aby kontynuować</h1><p class="lead" id="lockTxt" style="margin:8px auto 18px"></p><div class="row" style="justify-content:center"><a class="btn pri" href="#konto">Zaloguj się</a><a class="btn" href="#start">Wróć</a></div></div>
 </section>
 </main>
-<footer class="gfoot"><div class="wrap"><span>Punkt Życia · prototyp HackNation 2026 · nie jest oficjalną usługą administracji</span><span class="row" style="gap:18px"><a href="#dostepnosc">Dostępność</a><label for="lang" style="margin:0;font-size:15px;font-weight:500;color:var(--mute)">Język</label><select id="lang" style="min-height:44px;width:auto;font-size:15px;padding:4px 8px"><option value="pl">Polski</option><option value="en">English</option></select></span></div></footer>
+<footer class="gfoot"><div class="wrap"><span>AED4Life · prototyp HackNation 2026 · nie jest oficjalną usługą administracji</span><span class="row" style="gap:18px"><a href="#dostepnosc">Dostępność</a><label for="lang" style="margin:0;font-size:15px;font-weight:500;color:var(--mute)">Język</label><select id="lang" style="min-height:44px;width:auto;font-size:15px;padding:4px 8px"><option value="pl">Polski</option><option value="en">English</option></select></span></div></footer>
 
+<dialog id="loginDlg" aria-labelledby="loginT">
+  <form id="loginForm" method="dialog" class="stackc" autocomplete="on" novalidate>
+    <h2 id="loginT" style="margin-top:0">Logowanie</h2>
+    <div><label for="lgUser">Nazwa użytkownika</label><input type="text" id="lgUser" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required></div>
+    <div><label for="lgPass">Hasło</label><input type="password" id="lgPass" name="password" autocomplete="current-password" required></div>
+    <p id="loginErr" class="note" role="alert" style="color:var(--red);margin:0"></p>
+    <button class="pri" type="submit">Zaloguj się</button>
+    <button type="button" id="lgCancel">Anuluj</button>
+  </form>
+</dialog>
 <dialog id="dlg" aria-labelledby="dlgT"><h2 id="dlgT" style="margin-top:0">Czy ten AED jest na miejscu?</h2><p id="dlgB"></p><p class="note">Nie zbieramy telefonu ani e-maila.</p>
   <div class="stackc"><button class="okb" id="dYes">Tak, jest</button><button class="danger" id="dNo">Nie ma go lub jest uszkodzony</button><button id="dX">Anuluj</button></div></dialog>
 <dialog id="dlgDel" aria-labelledby="dlgDT"><h2 id="dlgDT" style="margin-top:0">Usunąć AED z rejestru?</h2><p>Tylko jeśli urządzenie zdemontowano. Przy wątpliwościach oznacz „Do sprawdzenia”.</p>
@@ -1422,17 +1425,12 @@ function drawSvg(){const u=vb[2]/680,dt=at(),vis=new Set(filtered().map(o=>o.r.i
   $('#fig').classList.toggle('pick',!!pickFor)}
 function drawList(){const f=filtered();$('#cnt').textContent=`${f.length} AED w pobliżu`;
   $('#list').innerHTML=f.length?f.slice(0,60).map(({r,s,d})=>`<div role="listitem"><button class="item" data-id="${r.id_aed}" aria-pressed="${sel===r.id_aed}"><b>${esc(r.nazwa_obiektu)}</b><span class="km">${fmtD(d)}</span><span class="meta">${pill(r.status_rekordu)} <span class="st ${s[0]}">${s[0]==='off'?'zamknięte':(({kod_od_dyspozytora:'kod poda 112',klucz_u_pracownika:'klucz u obsługi',pomoc_pracownika:'poproś obsługę'})[r.sposob_otwarcia]||(r.kategoria_dostepu==='dla_klientow'?'dla klientów':'otwarte'))}</span></span></button></div>`).join(''):'<p class="empty">Żaden AED nie spełnia filtrów. Odznacz któryś z nich.</p>'}
-let passIdx={};
-function passport(r,key){const p=r.paszport;if(!p)return '';const sl=[{img:p.wejscie,txt:'Wejście'},...p.kroki,{img:p.aed,txt:'Tu jest AED'}];const i=Math.min(passIdx[key]||0,sl.length-1);
-  return `<div class="pass" data-key="${key}" data-id="${r.id_aed}"><figure><img src="${p===null?'':sl[i].img}" alt="${esc(sl[i].txt)}"><figcaption>Krok ${i+1} z ${sl.length}: ${esc(sl[i].txt)}</figcaption></figure>
-  <div class="nav"><button data-pv="-1" ${i?'':'disabled'} aria-label="Poprzedni krok">← Wstecz</button><span class="note">piętro ${p.pietro===''?'—':p.pietro==0?'0 (parter)':esc(p.pietro)} · punkt orientacyjny: ${esc(p.punkt)}</span><button data-pv="1" ${i<sl.length-1?'':'disabled'} aria-label="Następny krok">Dalej →</button></div><p class="note" style="margin:0">Paszport dostępu nagrał: ${esc(p.autor)}</p></div>`}
-document.addEventListener('click',e=>{const b=e.target.closest('[data-pv]');if(!b)return;const box=b.closest('.pass'),k=box.dataset.key;passIdx[k]=(passIdx[k]||0)+ +b.dataset.pv;const r=AED.find(a=>a.id_aed===box.dataset.id);box.outerHTML=passport(r,k);$(`.pass[data-key="${k}"] [data-pv="${b.dataset.pv}"]`)?.focus()});
-function detail(id){sel=id;const r=AED.find(a=>a.id_aed===id);if(!r){$('#detail').innerHTML='';return}const s=state(r,at()),age=r.data_weryfikacji?months(new Date(r.data_weryfikacji),TODAY):null,canRec=ALLOW[role].includes('trasa');
+function detail(id){sel=id;const r=AED.find(a=>a.id_aed===id);if(!r){$('#detail').innerHTML='';return}const s=state(r,at()),age=r.data_weryfikacji?months(new Date(r.data_weryfikacji),TODAY):null;
   $('#detail').innerHTML=`<article class="card" aria-labelledby="dt"><div class="row" style="justify-content:space-between"><h2 id="dt" style="margin:0">${esc(r.nazwa_obiektu)}</h2>${pill(r.status_rekordu)}</div><p class="st ${s[0]}" style="margin:4px 0 0">${s[1]}</p>
-  <div class="row" style="margin-top:14px"><a class="btn okb" href="#prowadz-${r.id_aed}">${ic('nav')} Prowadź</a><button id="qrBtn">${ic('check')} Jest na miejscu</button>${canRec?`<a class="btn" href="#trasa">${ic('route')} ${r.paszport?'Nagraj trasę od nowa':'Nagraj trasę, +50 pkt'}</a>`:''}</div>
+  <div class="row" style="margin-top:14px"><a class="btn okb" href="#prowadz-${r.id_aed}">${ic('nav')} Prowadź</a><button id="qrBtn">${ic('check')} Jest na miejscu</button></div>
   <div class="split" style="margin-top:16px"><div><dl class="kv" style="margin:0"><dt>Gdzie</dt><dd><b>${esc(r.opis_dojscia)||'brak opisu'}${r.poziom_pietro!==''?`, piętro ${r.poziom_pietro}`:''}</b></dd><dt>Jak zdobyć</dt><dd>${LBL[r.sposob_otwarcia]}</dd><dt>Godziny</dt><dd>${r.calodobowo==='true'?'całą dobę':esc(r.godziny_dostepu)||'brak danych'}</dd><dt>Sprawdzono</dt><dd>${r.data_weryfikacji?pl(r.data_weryfikacji):'nigdy'}</dd></dl>
   <details class="det"><summary>Więcej informacji</summary><dl class="kv" style="margin:4px 0 0"><dt>Adres</dt><dd>ul. ${esc(r.ulica)} ${esc(r.numer_budynku)}, ${esc(r.miejscowosc)}</dd><dt>Kto może użyć</dt><dd>${LBL[r.kategoria_dostepu]}</dd><dt>Potwierdzenia</dt><dd>${r.oceny.tak} „jest”, ${r.oceny.nie} „nie ma”</dd><dt>Jakość danych</dt><dd>${r.wskaznik_jakosci}/100</dd><dt>Źródła</dt><dd>${r.src.join(', ')}</dd></dl></details></div>
-  <div>${r.paszport?passport(r,'d'):`<div class="empty" style="background:var(--sf2);border-radius:14px">${ic('route')}<br>Brak trasy od wejścia do AED</div>`}</div></div></article>`;
+</div></article>`;
   $('#qrBtn').onclick=()=>{$('#dlgB').textContent=`${r.nazwa_obiektu}, ${r.miejscowosc}.`;$('#dlg').showModal()};drawMap();drawList();showBuilding(r)}
 function rate(ok){const r=AED.find(a=>a.id_aed===sel);if(!r)return;if(ok){r.oceny.tak++;r.data_weryfikacji=iso(TODAY);r.sposob_weryfikacji='potwierdzenie_qr';if(!r.src.includes('potwierdzenie_qr'))r.src.push('potwierdzenie_qr');points+=10}else{r.oceny.nie++;if(r.oceny.nie>=1)r.status_rekordu='wymaga_sprawdzenia'}
   r.wskaznik_jakosci=quality(r);$('#dlg').close();if(location.hash==='#ratunek')renderSos();else detail(sel);$('#live').textContent=ok?'Dziękujemy. Data weryfikacji zaktualizowana na dziś, +10 pkt.':'Dziękujemy. AED oznaczony „wymaga sprawdzenia”, instytucja dostanie powiadomienie.'}
@@ -1594,38 +1592,40 @@ $('#r_foto').onchange=e=>{const f=e.target.files[0];if(!f)return;repFile=f;repIm
   $('#r_gps').textContent='Zapisuję lokalizację zdjęcia…';
   navigator.geolocation.getCurrentPosition(p=>use({la:p.coords.latitude,lo:p.coords.longitude,acc:p.coords.accuracy,ts:p.timestamp}),
     er=>{$('#r_gps').textContent=er.code===1?'Brak zgody na lokalizację. Zezwól na nią i zrób zdjęcie jeszcze raz.':'Nie udało się ustalić lokalizacji. Zrób zdjęcie jeszcze raz.'},{enableHighAccuracy:true,maximumAge:0,timeout:20000})};
+const REPORT_USER_ID=window.AED4LIFE_USER_ID||1;
+/* JSON metadata for POST /api/zgloszenia (AED4Life WebAPI): userId, aedId, photoUrl, description,
+   availabilityStartHour (0-23), availabilityEndHour (0-24), isPubliclyAccessible, rating (0-100 = AI photo check). */
+function repHours(tryb,godz){if(tryb==='24/7')return{s:0,e:24};
+  const m=/(\d{1,2})(?::\d{2})?\s*[-–—]\s*(\d{1,2})(?::\d{2})?/.exec(godz||'');if(!m)return{s:null,e:null};
+  const s=+m[1],e=+m[2];return s>=0&&s<=23&&e>=0&&e<=24&&s!==e?{s,e}:{s:null,e:null}}
+function repMeta(tryb,godz,ai){const h=repHours(tryb,godz),kat=$('#r_kat').value;
+  const meta={userId:REPORT_USER_ID,description:$('#r_opis').value.trim(),
+    availabilityStartHour:h.s,availabilityEndHour:h.e,
+    isPubliclyAccessible:kat==='publiczny'?true:kat==='nieznany'?null:false,
+    rating:ai&&Number.isFinite(+ai.wynik)?Math.max(0,Math.min(100,Math.round(+ai.wynik))):null};
+  return meta}
+function repProblem(j,status){const er=j&&j.errors?Object.values(j.errors).flat().join('; '):'';return er||(j&&(j.title||j.detail))||('błąd '+status)}
 $('#repForm').onsubmit=async e=>{e.preventDefault();const miss=[];if(!repFile)miss.push('zdjęcie AED');else if(!repGps)miss.push('lokalizacja zdjęcia (zezwól na lokalizację i zrób zdjęcie ponownie)');if(!$('#r_opis').value.trim())miss.push('gdzie dokładnie wisi AED');if($('#r_godzTryb').value==='godziny'&&!$('#r_godz').value.trim())miss.push('godziny dostępności');
   if(!miss.length&&dist(repGps,repPos)>150)miss.push(`zdjęcie zrobiono ${Math.round(dist(repGps,repPos))} m od wskazanego miejsca – zrób zdjęcie przy AED`);
   if(miss.length){$('#repOut').innerHTML=`<ul class="iss"><li class="blad"><b>Uzupełnij:</b> ${miss.join(', ')}.</li></ul>`;return}
   const tryb=$('#r_godzTryb').value,godz=tryb==='godziny'?$('#r_godz').value.trim():tryb;
   const btn=e.submitter||$('#repForm button[type=submit]');btn.disabled=true;$('#repOut').innerHTML='<p class="note">Wysyłam zgłoszenie…</p>';
-  let srv=null,srvErr='';
+  let srv=null,srvErr='',rep=null,repErr='';
+  /* 1) automatyczna kontrola zdjęcia (AI) – serwer weryfikacji zwraca wynik 0-100 */
   try{const fd=new FormData();for(const[k,v]of[['nazwa',$('#r_nazwa').value||'AED'],['miejscowosc',$('#r_miasto').value],['kod_pocztowy',$('#r_kod').value],['ulica',$('#r_ulica').value],['numer_budynku',$('#r_nr').value],['opis_dojscia',$('#r_opis').value],['godziny_dostepu',godz],['kategoria_dostepu',$('#r_kat').value],['aed_lat',repPos.la],['aed_lon',repPos.lo],['lat',repGps.la],['lon',repGps.lo],['accuracy',repGps.acc],['ts',new Date(repGps.ts).toISOString()],['urzadzenie',devId()]])fd.append(k,v);fd.append('zdjecie',repFile,repFile.name||'aed.jpg');
     const rs=await fetch(API+'/zgloszenia',{method:'POST',body:fd});const j=await rs.json().catch(()=>({}));if(rs.ok)srv=j;else srvErr=j.blad||('błąd '+rs.status)}catch{srvErr='offline'}
+  /* 2) żądanie JSON do WebAPI AED4Life: POST /api/zgloszenia (multipart: metadata + image); ocena AI trafia do pola rating */
+  const meta=repMeta(tryb,godz,srv);
+  try{const fd=new FormData();fd.append('metadata',JSON.stringify(meta));fd.append('image',repFile,repFile.name||'aed.jpg');
+    const rs=await fetch(`${API4L}/api/zgloszenia`,{method:'POST',body:fd});const j=await rs.json().catch(()=>({}));if(rs.ok)rep=j;else repErr=repProblem(j,rs.status)}catch{repErr='offline'}
   btn.disabled=false;
-  if(!srv&&srvErr!=='offline'){$('#repOut').innerHTML=`<ul class="iss"><li class="blad"><b>Nie przyjęto:</b> ${esc(srvErr)}.</li></ul>`;return}
+  if(repErr&&repErr!=='offline'){$('#repOut').innerHTML=`<ul class="iss"><li class="blad"><b>Nie przyjęto:</b> ${esc(repErr)}.</li></ul><details class="det"><summary>Wysłane żądanie (JSON)</summary><pre>${esc(JSON.stringify(meta,null,2))}</pre></details>`;return}
   const raw={nazwa_obiektu:$('#r_nazwa').value||'AED',miejscowosc:$('#r_miasto').value,kod_pocztowy:$('#r_kod').value,ulica:$('#r_ulica').value,numer_budynku:$('#r_nr').value,lat:repPos.la,lon:repPos.lo,opis_dojscia:$('#r_opis').value,calodobowo:tryb==='24/7'?'true':'',godziny_dostepu:tryb==='godziny'?godz:'',kategoria_dostepu:$('#r_kat').value,stacjonarny:'true',umiejscowienie:'inne',sposob_otwarcia:'nieznany',status_sprawnosci:'nieznany',zrodlo:'zgloszenie_mieszkanca',sposob_weryfikacji:'zdjecie',status_rekordu:'zgloszony'};
   const {r,is}=validate(raw,false);if(r.status_rekordu==='zweryfikowany')r.status_rekordu='zgloszony';r.id_aed=srv?srv.id_aed:'PL-AED-'+String(n++).padStart(8,'0');r.etykieta=[r.nazwa_obiektu,r.miejscowosc].filter(Boolean).join(', ');r.data_dodania_w_zrodle=iso(TODAY);r.src=['zgloszenie_mieszkanca'];r.oceny={tak:0,nie:0};r.zdjecie=repImg;r.autor='ja';r.wskaznik_jakosci=quality(r,is);AED.push(r);sel=r.id_aed;saveCache();
-  const ver=srv?`<p>Automatyczna kontrola zdjęcia: <b>${srv.wynik}/100</b>${(srv.powody||[]).length?' – '+srv.powody.map(esc).join('; '):''}.</p><p>AED pojawi się w trybie ratunkowym, gdy potwierdzi go druga osoba na miejscu albo instytucja.</p>`:`<p class="note">Brak połączenia z serwerem – zgłoszenie zapisane tylko na tym urządzeniu.</p>`;
+  const ver=`${rep?`<p>Zgłoszenie <b>#${esc(String(rep.id))}</b> przyjęte przez WebAPI (status: ${esc(String(rep.status))}).</p>`:`<p class="note">Brak połączenia z WebAPI – zgłoszenie zapisane tylko na tym urządzeniu.</p>`}${srv?`<p>Automatyczna kontrola zdjęcia (AI): <b>${srv.wynik}/100</b>${(srv.powody||[]).length?' – '+srv.powody.map(esc).join('; '):''}.</p>`:`<p class="note">Ocena AI niedostępna – pole rating zostało puste.</p>`}<details class="det"><summary>Żądanie JSON wysłane do WebAPI</summary><pre style="white-space:pre-wrap;overflow:auto">${esc(JSON.stringify(meta,null,2))}</pre></details><p>AED pojawi się w trybie ratunkowym, gdy potwierdzi go druga osoba na miejscu albo instytucja.</p>`;
   $('#repOut').innerHTML=`<div class="card"><h3>Dziękujemy! Zgłoszenie ${esc(r.id_aed)} ma status ${badge(r.status_rekordu)}</h3>${ver}<div class="row"><a class="btn" href="#mapa">Mapa AED</a></div></div>`;
   repPos=null;repFile=null;repGps=null;$('#repForm').reset();$('#r_godzBox').hidden=true;$('#r_prev').style.display='none';$('#r_adrBox').style.display='none';$('#r_gps').textContent=repFix?`Lokalizacja gotowa (±${Math.round(repFix.acc)} m)`:'Ustalam Twoją lokalizację…'};
 
-let wz=null;function wizStart(){const r=AED.find(a=>a.id_aed===sel);if(!r){$('#trLead').textContent='Najpierw wybierz AED na mapie.';$('#wiz').innerHTML='';return}
-  wz={id:r.id_aed,steps:[{k:'wejscie',txt:'Wejście główne',img:null},{k:'krok',txt:'',img:null},{k:'krok',txt:'',img:null},{k:'aed',txt:'Tu jest AED',img:null}],pietro:r.poziom_pietro===''?'':String(r.poziom_pietro),punkt:''};
-  $('#trLead').textContent=`${r.nazwa_obiektu}, ${r.miejscowosc}. Idź od wejścia do AED. W każdym miejscu, gdzie skręcasz albo zmieniasz piętro, zrób zdjęcie i dopisz 2–3 słowa.`;wizDraw()}
-const KIND=['door','left','right','stairs','desk'];
-function wizDraw(){$('#wiz').innerHTML=wz.steps.map((s,i)=>`<div class="wstep"><img src="${s.img||IMG(s.k==='aed'?'aed':s.k==='wejscie'?'door':'right','zrób zdjęcie')}" alt=""><div><label for="ws${i}">${s.k==='wejscie'?'1. Stań przed wejściem, którym wchodzi się do budynku':s.k==='aed'?`${i+1}. Zdjęcie samego AED`:`${i+1}. Miejsce zmiany kierunku lub piętra`}</label>
-  <input type="text" id="ws${i}" data-w="${i}" value="${esc(s.txt)}" placeholder="np. recepcja, w lewo" maxlength="60"><div class="row" style="margin-top:6px"><label class="btn" style="margin:0">Zdjęcie<input type="file" accept="image/*" capture="environment" data-wf="${i}" class="sr"></label><button data-ws="${i}">Przykładowe zdjęcie</button>${s.k==='krok'&&wz.steps.length>3?`<button data-wd="${i}">Usuń krok</button>`:''}</div></div></div>`).join('')+
-  `<div class="form"><div><label for="wP">Piętro AED (0 = parter)</label><input type="text" id="wP" value="${esc(wz.pietro)}"></div><div><label for="wL">Punkt orientacyjny</label><input type="text" id="wL" value="${esc(wz.punkt)}" placeholder="np. winda, szatnia"></div></div><p class="note">Na telefonie przycisk „Zdjęcie” otwiera aparat. W wersji docelowej zdjęcie wejścia zapisuje też pozycję GPS wejścia.</p>`;
-  $('#wAdd').disabled=wz.steps.filter(s=>s.k==='krok').length>=5}
-$('#wiz').addEventListener('input',e=>{const i=e.target.dataset.w;if(i!=null)wz.steps[i].txt=e.target.value;if(e.target.id==='wP')wz.pietro=e.target.value;if(e.target.id==='wL')wz.punkt=e.target.value});
-$('#wiz').addEventListener('change',e=>{const i=e.target.dataset.wf;if(i!=null&&e.target.files[0]){wz.steps[i].img=URL.createObjectURL(e.target.files[0]);wizDraw()}});
-$('#wiz').addEventListener('click',e=>{const s=e.target.dataset.ws,d=e.target.dataset.wd;if(s!=null){const st=wz.steps[s];st.img=IMG(st.k==='aed'?'aed':st.k==='wejscie'?'door':KIND[1+s%4],st.txt||'krok '+(+s+1));wizDraw()}if(d!=null){wz.steps.splice(d,1);wizDraw()}});
-$('#wAdd').onclick=()=>{wz.steps.splice(wz.steps.length-1,0,{k:'krok',txt:'',img:null});wizDraw()};
-$('#wSave').onclick=()=>{const miss=[];if(!wz.steps[0].img)miss.push('zdjęcie wejścia');if(!wz.steps.at(-1).img)miss.push('zdjęcie AED');const mid=wz.steps.filter(s=>s.k==='krok');if(mid.some(s=>!s.img||!s.txt.trim()))miss.push('zdjęcie i opis każdego kroku');if(!mid.length)miss.push('co najmniej 1 krok trasy');
-  if(miss.length){$('#wOut').innerHTML=`<ul class="iss"><li class="blad"><b>Brakuje:</b> ${miss.join(', ')}.</li></ul>`;return}
-  const r=AED.find(a=>a.id_aed===wz.id);r.paszport={wejscie:wz.steps[0].img,kroki:mid.map(s=>({img:s.img,txt:s.txt.trim()})),aed:wz.steps.at(-1).img,pietro:wz.pietro,punkt:wz.punkt||'—',autor:'wolontariusz (Ty)'};r.wskaznik_jakosci=quality(r);points+=50;
-  $('#wOut').innerHTML=`<div class="card"><h3>Paszport zapisany, +50 pkt (razem ${points})</h3><p>Liczba kroków trasy: ${mid.length+2}. Od teraz trasa pokazuje się w trybie ratunkowym.</p><a class="btn pri" href="#mapa">Wróć do mapy</a></div>`;passIdx={}};
 
 const lvlName={blad:'Błąd',naprawa:'Naprawiono',ostrzezenie:'Ostrzeżenie',info:'Informacja'};
 const issHTML=is=>is.length?`<ul class="iss">${is.map(i=>`<li class="${i.lvl}"><b>${lvlName[i.lvl]}</b> · <code>${i.f}</code>: ${i.msg}</li>`).join('')}</ul>`:'<ul class="iss"><li class="ok"><b>Bez uwag.</b> Rekord gotowy do publikacji.</li></ul>';
@@ -1701,7 +1701,7 @@ function drawFlow(){const pv=providers(),ag=aggRows(),inRec=ag.reduce((a,r)=>a+r
   <div class="card"><span class="ic">${ic('data')}</span><span class="num">1</span><b>krajowa lista w dane.gov.pl</b><p class="note" style="margin:4px 0 0">Wybrane pola, pochodzenie i licencja każdego rekordu. Aktualizacja co tydzień.</p></div>`}
 
 function drawData(){drawFlow();$('#provs').innerHTML=provCards(false);const L2=live(AED),t=L2.length,pct=x=>Math.round(100*x/t)+'%',q=L2.map(r=>r.wskaznik_jakosci);
-  const k=[[t,'AED w zbiorze'],[pct(L2.filter(r=>r.status_rekordu==='zweryfikowany').length),'zweryfikowanych'],[pct(L2.filter(r=>r.calodobowo==='true').length),'dostępnych całą dobę'],[pct(L2.filter(r=>r.paszport).length),'z paszportem dostępu'],[pct(L2.filter(r=>r.src.length>1).length),'w 2+ źródłach'],[Math.round(q.reduce((a,b)=>a+b,0)/t),'średni wskaźnik jakości']];
+  const k=[[t,'AED w zbiorze'],[pct(L2.filter(r=>r.status_rekordu==='zweryfikowany').length),'zweryfikowanych'],[pct(L2.filter(r=>r.calodobowo==='true').length),'dostępnych całą dobę'],[pct(L2.filter(r=>r.src.length>1).length),'w 2+ źródłach'],[Math.round(q.reduce((a,b)=>a+b,0)/t),'średni wskaźnik jakości']];
   $('#kpis').innerHTML=k.map(([v,l])=>`<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join('')+'<p class="note" style="grid-column:1/-1;margin:0">Dane przykładowe do pokazu.</p>';
   const bars=(b)=>{const mx=Math.max(...b.map(x=>x[1]));return b.map(([l,c])=>`<div style="margin:8px 0"><div style="display:flex;justify-content:space-between;font-size:14px"><span>${l}</span><b>${c}</b></div><div class="bar"><i style="width:${mx?100*c/mx:0}%"></i></div></div>`).join('')};
   $('#qdist').innerHTML=bars([[0,40,'0–39 · do pilnej weryfikacji'],[40,60,'40–59 · niepełne'],[60,80,'60–79 · dobre'],[80,101,'80–100 · wzorcowe']].map(([a,z,l])=>[l,q.filter(x=>x>=a&&x<z).length]));
@@ -1721,18 +1721,18 @@ const ROLES={
     tiles:[['ratunek','Ratunek 112','Najbliższy AED i połączenie z 112','sos','sos'],['mapa','Mapa AED','Wszystkie defibrylatory w okolicy','map'],['rko','Jak uciskać klatkę','Krok po kroku, według Polskiej Rady Resuscytacji','heart'],['zglos','Zgłoś AED','Wymaga zalogowania','plus','lock']],
     desc:'Bez konta. Szybka pomoc i podgląd danych.',icon:'user',can:['Ratunek 112 i nawigacja do AED','Mapa i instrukcja RKO','Potwierdzenie „jest / nie ma”','Dane otwarte']},
   zglaszajacy:{name:'Zgłaszający',hello:'Cześć, Ania',lead:'Dziękujemy, że pomagasz utrzymać mapę AED w aktualności.',start:'start',nav:[['start','Start','home'],['mapa','Mapa','map'],['zglos','Zgłoś','plus'],['moje','Moje','list']],
-    tiles:[['ratunek','Ratunek 112','Najbliższy AED i połączenie z 112','sos','sos'],['zglos','Zgłoś AED','Lokalizacja, opis i zdjęcie','plus'],['moje','Moje zgłoszenia','Status i punkty','list','',()=>mine().filter(r=>r.status_rekordu!=='zweryfikowany').length],['moje','Nagraj trasę','AED w okolicy bez trasy, +50 pkt','route'],['mapa','Mapa AED','Defibrylatory w okolicy','map'],['akcja','Akcja','Naklejki QR i punkty','mega']],
-    desc:'Mieszkaniec, wolontariusz, zarządca budynku.',icon:'plus',can:['Zgłaszanie AED ze zdjęciem','Nagrywanie trasy od wejścia (+50 pkt)','Śledzenie statusu zgłoszeń']},
+    tiles:[['ratunek','Ratunek 112','Najbliższy AED i połączenie z 112','sos','sos'],['zglos','Zgłoś AED','Lokalizacja, opis i zdjęcie','plus'],['moje','Moje zgłoszenia','Status i punkty','list','',()=>mine().filter(r=>r.status_rekordu!=='zweryfikowany').length],['mapa','Mapa AED','Defibrylatory w okolicy','map'],['akcja','Akcja','Naklejki QR i punkty','mega']],
+    desc:'Mieszkaniec, wolontariusz, zarządca budynku.',icon:'plus',can:['Zgłaszanie AED ze zdjęciem','Śledzenie statusu zgłoszeń']},
   ministerstwo:{name:'Ministerstwo Cyfryzacji',hello:'Panel koordynatora',lead:'Krajowy zbiór AED: weryfikacja, jakość danych i publikacja w dane.gov.pl.',start:'start',nav:[['start','Start','home'],['dysponent','Panel','check'],['mapa','Mapa','map']],
-    tiles:[['ratunek','Ratunek 112','Podgląd trybu dla obywatela','sos','sos'],['weryfikacja','Do weryfikacji','Zgłoszenia czekające na decyzję','check','',()=>live(AED).filter(r=>['zgloszony','wymaga_sprawdzenia'].includes(r.status_rekordu)).length],['pokrycie','Pokrycie kraju','Miasta wymagające działania','chart'],['dostawcy','Dostawcy danych','Zbiory w dane.gov.pl i ich aktualność','upload'],['import','Import pliku','Sprawdzenie CSV od dysponenta','list'],['mapa','Mapa AED','Podgląd zbioru','map']],
-    desc:'Koordynator zbioru krajowego i publikacji.',icon:'bldg',can:['Weryfikacja zgłoszeń','Import danych z walidacją','Pokrycie kraju i jakość','Eksport do dane.gov.pl']}};
+    tiles:[['ratunek','Ratunek 112','Podgląd trybu dla obywatela','sos','sos'],['weryfikacja','Do weryfikacji','Zgłoszenia czekające na decyzję','check','',()=>live(AED).filter(r=>['zgloszony','wymaga_sprawdzenia'].includes(r.status_rekordu)).length],['pokrycie','Weryfikacja danych','Odsetek zweryfikowanych AED','chart'],['dostawcy','Dostawcy danych','Zbiory w dane.gov.pl i ich aktualność','upload'],['import','Import pliku','Sprawdzenie CSV od dysponenta','list'],['mapa','Mapa AED','Podgląd zbioru','map']],
+    desc:'Koordynator zbioru krajowego i publikacji.',icon:'bldg',can:['Weryfikacja zgłoszeń','Import danych z walidacją','Weryfikacja danych i jakość','Eksport do dane.gov.pl']}};
 ROLES.publiczny.hero={h:'ratunek',t:'Ktoś potrzebuje pomocy?',d:'Najbliższy AED i telefon 112',i:'sos'};
 ROLES.publiczny.rows=[['mapa','Mapa AED','map'],['rko','Jak uciskać klatkę','heart'],['zglos','Zgłoś AED','plus','lock']];
 ROLES.zglaszajacy.hero={h:'ratunek',t:'Ktoś potrzebuje pomocy?',d:'Najbliższy AED i telefon 112',i:'sos'};
 ROLES.zglaszajacy.rows=[['zglos','Zgłoś AED','plus'],['moje','Moje zgłoszenia','list','',()=>mine().filter(r=>r.status_rekordu!=='zweryfikowany').length],['mapa','Mapa AED','map'],['rko','Jak uciskać klatkę','heart']];
 ROLES.ministerstwo.hero={h:'weryfikacja',t:'',d:'Zgłoszenia czekają na Twoją decyzję',i:'check',cls:'blue'};
-ROLES.ministerstwo.rows=[['ratunek','Ratunek 112','sos','red'],['pokrycie','Pokrycie kraju','chart'],['dostawcy','Dostawcy danych','upload'],['import','Import pliku','list'],['mapa','Mapa AED','map']];
-const ALLOW={publiczny:['prowadz','uciskaj','dostepnosc','start','ratunek','rko','mapa','konto','akcja'],zglaszajacy:['prowadz','uciskaj','dostepnosc','start','ratunek','rko','mapa','konto','akcja','zglos','trasa','moje'],ministerstwo:['prowadz','uciskaj','dostepnosc','start','ratunek','rko','mapa','konto','akcja','zglos','trasa','moje','dysponent']};
+ROLES.ministerstwo.rows=[['ratunek','Ratunek 112','sos','red'],['pokrycie','Weryfikacja danych','chart'],['dostawcy','Dostawcy danych','upload'],['import','Import pliku','list'],['mapa','Mapa AED','map']];
+const ALLOW={publiczny:['prowadz','uciskaj','dostepnosc','start','ratunek','rko','mapa','konto','akcja'],zglaszajacy:['prowadz','uciskaj','dostepnosc','start','ratunek','rko','mapa','konto','akcja','zglos','moje'],ministerstwo:['prowadz','uciskaj','dostepnosc','start','ratunek','rko','mapa','konto','akcja','zglos','moje','dysponent']};
 let role='publiczny';try{role=localStorage.getItem('pz_role')||role}catch{}if(!ROLES[role])role='publiczny';
 function drawNav(){$('#tabs').innerHTML=ROLES[role].nav.map(([h,t,i])=>`<a href="#${h}">${ic(i)}<span>${t}</span></a>`).join('');$('#who').innerHTML=`<span class="av">${ic(ROLES[role].icon)}</span><span class="nm">${role==='publiczny'?'Zaloguj się':ROLES[role].name}</span>`;$('#who').setAttribute('aria-label',role==='publiczny'?'Zaloguj się':'Konto: '+ROLES[role].name)}
 let entered=false;function drawStart(){const R=ROLES[role];{const lv=live(AED);$('#fact').textContent=`W rejestrze ${lv.length} defibrylatorów, ${lv.filter(r=>r.status_rekordu==='zweryfikowany').length} sprawdzonych w ostatnim roku. Dane przykładowe.`}$('#hello').textContent={publiczny:'Pomoc przy zatrzymaniu krążenia',zglaszajacy:'Cześć, Ania',ministerstwo:'Panel koordynatora'}[role];const H={...R.hero};if(role==='ministerstwo'){const n=live(AED).filter(r=>['zgloszony','wymaga_sprawdzenia'].includes(r.status_rekordu)).length;H.t=n?`${n} zgłoszeń do sprawdzenia`:'Wszystko sprawdzone';}
@@ -1741,26 +1741,32 @@ let entered=false;function drawStart(){const R=ROLES[role];{const lv=live(AED);$
   let info='';if(role==='zglaszajacy'){const r=mine().sort((a,b)=>(b.data_dodania_w_zrodle||'').localeCompare(a.data_dodania_w_zrodle||''))[0];if(r)info=`<div class="card row" style="justify-content:space-between"><span><span class="note">Twoje ostatnie zgłoszenie</span><br><b style="font-size:18px">${esc(r.nazwa_obiektu)}</b></span>${pill(r.status_rekordu)}</div>`}
   $('#startInfo').innerHTML=info;if(!entered){entered=true;$('#hero').firstElementChild?.classList.add('enter');$('#rows').classList.add('enter2')}}
 function drawRoles(){$('#roles').innerHTML=Object.entries(ROLES).map(([k,v])=>`<button class="role" data-role="${k}" aria-pressed="${k===role}"><span class="ic">${ic(v.icon)}</span><b>${v.name}</b><span>${v.desc}</span><ul>${v.can.map(c=>`<li>${c}</li>`).join('')}</ul><span class="btn ${k===role?'':'pri'}">${k===role?'Aktywny widok':(k==='publiczny'?'Kontynuuj jako gość':'Zaloguj się')}</span></button>`).join('')}
-$('#roles').onclick=e=>{const b=e.target.closest('[data-role]');if(!b)return;role=b.dataset.role;try{localStorage.setItem('pz_role',role)}catch{}drawNav();$('#live').textContent='Widok: '+ROLES[role].name;location.hash='start'};
+const LOGIN={pending:null};
+function loginOpen(k){LOGIN.pending=k;$('#loginT').textContent='Logowanie – '+ROLES[k].name;$('#loginErr').textContent='';$('#lgPass').value='';try{$('#lgUser').value=localStorage.getItem('pz_user')||''}catch{}$('#loginDlg').showModal();setTimeout(()=>($('#lgUser').value?$('#lgPass'):$('#lgUser')).focus(),30)}
+$('#loginForm').onsubmit=e=>{e.preventDefault();const u=$('#lgUser').value.trim(),p=$('#lgPass').value;if(!u||!p){$('#loginErr').textContent='Podaj nazwę użytkownika i hasło.';return}
+  role=LOGIN.pending;try{localStorage.setItem('pz_role',role);localStorage.setItem('pz_user',u)}catch{}$('#lgPass').value='';$('#loginDlg').close();drawNav();$('#live').textContent='Zalogowano jako '+u+'. Widok: '+ROLES[role].name;location.hash='start'};
+$('#lgCancel').onclick=()=>{$('#lgPass').value='';$('#loginDlg').close()};
+$('#roles').onclick=e=>{const b=e.target.closest('[data-role]');if(!b)return;const k=b.dataset.role;if(k==='publiczny'||k===role){role=k;try{localStorage.setItem('pz_role',role);if(k==='publiczny')localStorage.removeItem('pz_user')}catch{}drawNav();$('#live').textContent='Widok: '+ROLES[role].name;location.hash='start';return}loginOpen(k)};
 const mine=()=>AED.filter(r=>r.autor==='ja');
 function drawMoje(){const m=mine(),pts=points+m.length*20;$('#mojeLead').textContent='Zgłoszenie pojawi się w trybie ratunkowym po zatwierdzeniu przez instytucję.';
-  $('#mojeKpi').innerHTML=[[m.length,'zgłoszonych AED'],[m.filter(r=>r.status_rekordu==='zweryfikowany').length,'zatwierdzonych'],[AED.filter(r=>r.paszport&&r.paszport.autor==='wolontariusz (Ty)').length,'nagranych tras'],[pts,'punktów']].map(([v,l])=>`<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join('');
+  $('#mojeKpi').innerHTML=[[m.length,'zgłoszonych AED'],[m.filter(r=>r.status_rekordu==='zweryfikowany').length,'zatwierdzonych'],[pts,'punktów']].map(([v,l])=>`<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join('');
   const tl=r=>r.status_rekordu==='wymaga_sprawdzenia'||r.status_rekordu==='usuniety'?`<span class="tl"><i class="done">zgłoszony</i>›<i class="now">${LBL[r.status_rekordu]}</i></span>`:`<span class="tl"><i class="done">zgłoszony</i>›<i class="${r.status_rekordu==='zweryfikowany'?'done':'now'}">${r.status_rekordu==='zweryfikowany'?'zweryfikowany':'czeka na weryfikację'}</i></span>`;
-  $('#mojeList').innerHTML=m.length?m.map(r=>`<div class="card"><div class="row" style="justify-content:space-between"><b style="font-size:19px">${esc(r.nazwa_obiektu)}</b><span class="note">${pl(r.data_dodania_w_zrodle)}</span></div><div class="note">${esc(r.miejscowosc)} · ${esc(r.opis_dojscia)}</div>${tl(r)}<div class="row" style="margin-top:10px">${r.paszport?`<span class="pill b-zweryfikowany">✓ trasa nagrana</span>`:`<a class="btn" href="#trasa" data-sel="${r.id_aed}">${ic('route')} Nagraj trasę, +50 pkt</a>`}</div></div>`).join(''):'<p class="empty">Nie masz jeszcze zgłoszeń.</p>';
-  const todo=live(AED).filter(r=>!r.paszport&&r.umiejscowienie==='w_budynku'&&r.autor!=='ja').map(r=>({r,d:dist(me,{la:r.lat,lo:r.lon})})).sort((a,b)=>a.d-b.d).slice(0,4);
-  $('#mojeTodo').innerHTML=todo.map(({r,d})=>`<a class="card row" href="#trasa" data-sel="${r.id_aed}" style="justify-content:space-between;text-decoration:none;color:inherit"><span><b>${esc(r.nazwa_obiektu)}</b><br><span class="note">${fmtD(d)} · ${esc(r.opis_dojscia)}</span></span><span class="btn">${ic('route')} +50 pkt</span></a>`).join('')}
+  $('#mojeList').innerHTML=m.length?m.map(r=>`<div class="card"><div class="row" style="justify-content:space-between"><b style="font-size:19px">${esc(r.nazwa_obiektu)}</b><span class="note">${pl(r.data_dodania_w_zrodle)}</span></div><div class="note">${esc(r.miejscowosc)} · ${esc(r.opis_dojscia)}</div>${tl(r)}</div>`).join(''):'<p class="empty">Nie masz jeszcze zgłoszeń.</p>';
+}
 document.addEventListener('click',e=>{const a=e.target.closest('[data-sel]');if(a)sel=a.dataset.sel});
-function drawCov(){const by={};for(const r of AED){if(r.status_rekordu==='usuniety')continue;const c=by[r.miejscowosc]||(by[r.miejscowosc]={n:0,v:0,q:0,p:0,chk:0,z:0});c.n++;c.q+=r.wskaznik_jakosci;if(r.status_rekordu==='zweryfikowany')c.v++;if(r.paszport)c.p++;if(r.status_rekordu==='wymaga_sprawdzenia')c.chk++;if(r.status_rekordu==='zgloszony')c.z++}
-  const rows=Object.entries(by).map(([k,c])=>({k,...c,pv:Math.round(100*c.v/c.n),aq:Math.round(c.q/c.n),pp:Math.round(100*c.p/c.n)})).sort((a,b)=>a.pv-b.pv);
-  $('#cov').innerHTML=rows.slice(0,60).map(r=>`<div class="card"><div class="row" style="justify-content:space-between"><b style="font-size:19px">${r.k}</b><span class="note">${r.n} AED</span></div><div class="row" style="justify-content:space-between;margin-top:8px"><span>Zweryfikowane</span><b style="color:${r.pv<50?'var(--red)':'var(--ok)'}">${r.pv}%</b></div><div class="bar"><i style="width:${r.pv}%;background:${r.pv<50?'var(--red)':'var(--ok)'}"></i></div><div class="row" style="margin-top:10px;gap:6px">${r.z?`<span class="pill b-zgloszony">${r.z} czeka na decyzję</span>`:''}${r.chk?`<span class="pill b-wymaga_sprawdzenia">${r.chk} do sprawdzenia</span>`:''}<span class="pill b-usuniety">trasy: ${r.pp}%</span><span class="pill b-usuniety">jakość: ${r.aq}</span></div></div>`).join('')}
-const VIEWS=['prowadz','start','ratunek','uciskaj','dostepnosc','rko','konto','moje','locked','mapa','zglos','trasa','dysponent','dane','akcja'],NAVMAP={prowadz:'start',trasa:'mapa',ratunek:'start',akcja:'start',konto:'start',locked:'start'},TABHASH={weryfikacja:'queue',pokrycie:'cov',dostawcy:'prov',import:'csv',dodaj:'form'};
+function drawCov(){const by={};let N=0,V=0;for(const r of AED){if(r.status_rekordu==='usuniety')continue;N++;if(r.status_rekordu==='zweryfikowany')V++;const c=by[r.miejscowosc]||(by[r.miejscowosc]={n:0,v:0,q:0,chk:0,z:0});c.n++;c.q+=r.wskaznik_jakosci;if(r.status_rekordu==='zweryfikowany')c.v++;if(r.status_rekordu==='wymaga_sprawdzenia')c.chk++;if(r.status_rekordu==='zgloszony')c.z++}
+  const all=N?Math.round(100*V/N):0,col=p=>p<50?'var(--red)':'var(--ok)';
+  const rows=Object.entries(by).map(([k,c])=>({k,...c,pv:Math.round(100*c.v/c.n),aq:Math.round(c.q/c.n)})).sort((a,b)=>a.pv-b.pv);
+  $('#cov').innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><b style="font-size:19px">Zweryfikowane dane o AED</b><span class="note">${V} z ${N} AED</span></div><div class="row" style="justify-content:space-between;margin-top:8px"><span>Odsetek zweryfikowanych</span><b style="font-size:28px;color:${col(all)}">${all}%</b></div><div class="bar"><i style="width:${all}%;background:${col(all)}"></i></div></div>`+
+  rows.slice(0,60).map(r=>`<div class="card"><div class="row" style="justify-content:space-between"><b style="font-size:19px">${esc(r.k)}</b><span class="note">${r.n} AED</span></div><div class="row" style="justify-content:space-between;margin-top:8px"><span>Zweryfikowane</span><b style="color:${col(r.pv)}">${r.pv}%</b></div><div class="bar"><i style="width:${r.pv}%;background:${col(r.pv)}"></i></div><div class="row" style="margin-top:10px;gap:6px">${r.z?`<span class="pill b-zgloszony">${r.z} czeka na decyzję</span>`:''}${r.chk?`<span class="pill b-wymaga_sprawdzenia">${r.chk} do sprawdzenia</span>`:''}<span class="pill b-usuniety">jakość: ${r.aq}</span></div></div>`).join('')}
+const VIEWS=['prowadz','start','ratunek','uciskaj','dostepnosc','rko','konto','moje','locked','mapa','zglos','dysponent','dane','akcja'],NAVMAP={prowadz:'start',ratunek:'start',akcja:'start',konto:'start',locked:'start'},TABHASH={weryfikacja:'queue',pokrycie:'cov',dostawcy:'prov',import:'csv',dodaj:'form'};
 let lastView='';function route(){let h=location.hash.slice(1);let gid=null;if(h.startsWith('prowadz')){gid=h.slice(8)||null;h='prowadz'}if(h==='ratunek')h='prowadz';if(h.startsWith('potwierdz-')){const id=h.slice(10);location.hash='mapa';if(AED.some(a=>a.id_aed===id)){detail(id);$('#qrBtn').click()}return}
   let tab=null;if(TABHASH[h]){tab=TABHASH[h];h='dysponent'}if(!VIEWS.includes(h))h=ROLES[role].start;
   if(!ALLOW[role].includes(h)&&h!=='locked'){$('#lockTxt').textContent=h==='dysponent'?'Panel jest dostępny dla pracowników Ministerstwa Cyfryzacji.':'Zgłaszanie AED i nagrywanie tras wymaga konta. Dzięki temu rejestr jest chroniony przed fałszywymi wpisami.';h='locked'}
   for(const v of VIEWS)$('#v-'+v).classList.toggle('on',v===h);const navH=NAVMAP[h]||h;for(const a of $$('#tabs a'))a.getAttribute('href')==='#'+navH?a.setAttribute('aria-current','page'):a.removeAttribute('aria-current');
   if(h!==lastView&&h!=='mapa')window.scrollTo(0,0);lastView=h;
   if(h!=='mapa'&&pickFor&&h!=='zglos'&&h!=='ratunek')pickFor=null;if(h==='mapa'){lmInit();setTimeout(()=>LM.map&&LM.map.invalidateSize(),50);if(pickFor){$('#pickbar').textContent=pickFor==='zglos'?'Dotknij miejsca, gdzie wisi AED':'Dotknij miejsca, gdzie jesteś'}drawMap();drawList();if(sel)detail(sel)}
-  document.body.classList.toggle('sosmode',h==='ratunek'||h==='uciskaj');if(h==='uciskaj')uczOpen();if(h==='ratunek')renderSos();if(h==='start')drawStart();if(h==='trasa')wizStart();if(h==='dysponent'){showTab(tab||curTab)}if(h==='dane')drawData();if(h==='konto')drawRoles();if(h==='moje')drawMoje();if(h==='prowadz')gOpen(gid);else gClose()}
+  document.body.classList.toggle('sosmode',h==='ratunek'||h==='uciskaj');if(h==='uciskaj')uczOpen();if(h==='ratunek')renderSos();if(h==='start')drawStart();if(h==='dysponent'){showTab(tab||curTab)}if(h==='dane')drawData();if(h==='konto')drawRoles();if(h==='moje')drawMoje();if(h==='prowadz')gOpen(gid);else gClose()}
 if(location.hash==='#ratunek')history.replaceState(null,'',location.pathname+location.search+'#prowadz');
 const GL='pl';
 const RT={g:null,box:null,busy:null};

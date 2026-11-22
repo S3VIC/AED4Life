@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Starts the Punkt Zycia GUI (gui/aplikacja) on a local web server. No arguments needed.
+# Starts the AED4Life GUI (gui/aplikacja) on a local web server. No arguments needed.
 # Picks the first free port in 8000-8020 and opens the browser if a desktop is available.
 # The GUI fetches AED data from the AED4Life WebAPI by itself.
 set -euo pipefail
@@ -23,7 +23,7 @@ done
 [ -n "$PORT" ] || { echo "Ports 8000-8020 are all in use." >&2; exit 1; }
 
 URL="http://localhost:$PORT/"
-printf '\n  Punkt Zycia is running at: %s\n  Press Ctrl+C to stop.\n\n' "$URL"
+printf '\n  AED4Life is running at: %s\n  Press Ctrl+C to stop.\n\n' "$URL"
 if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open >/dev/null 2>&1; then xdg-open "$URL" >/dev/null 2>&1 & fi
 if [ "$(uname)" = "Darwin" ]; then open "$URL" >/dev/null 2>&1 & fi
 

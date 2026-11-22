@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Punkt Zycia (AED4Life GUI) - one-shot startup script for a Debian/Ubuntu VM.
+# AED4Life (AED4Life GUI) - one-shot startup script for a Debian/Ubuntu VM.
 #
 # Usage (from the copied/cloned gui folder, nothing else required):
 #     bash start.sh
@@ -62,7 +62,7 @@ fi
 
 say "Publishing GUI to $WEB"
 mkdir -p "$WEB"
-cp "$APP"/index.html "$APP"/sw.js "$APP"/manifest.webmanifest "$APP"/icon-*.png "$WEB"/
+cp "$APP"/index.html "$APP"/sw.js "$APP"/manifest.webmanifest "$APP"/icon-*.png "$APP"/AED4life_logo.png "$WEB"/
 for f in weryfikuj.html panel.html foto.js; do
   [ -f "$VERIFY/static/$f" ] && cp "$VERIFY/static/$f" "$WEB"/
 done
@@ -88,7 +88,7 @@ if [ -d "$VERIFY" ] && [ -f "$VERIFY/__main__.py" ]; then
   chown -R punktzycia:punktzycia "$DATA"
   cat > /etc/systemd/system/punktzycia-api.service <<UNIT
 [Unit]
-Description=Punkt Zycia - AED verification
+Description=AED4Life - AED verification
 After=network.target
 [Service]
 User=punktzycia

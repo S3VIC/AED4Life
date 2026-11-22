@@ -8,7 +8,7 @@ foreach ($port in 8000..8020) {
 if (-not $listener) { Write-Host 'Nie udalo sie uruchomic serwera (porty 8000-8020 zajete).'; Read-Host 'Enter, aby zamknac'; exit 1 }
 $url = "http://localhost:$port/index.html"
 Write-Host ''
-Write-Host '  Punkt Zycia dziala pod adresem:' -ForegroundColor Green
+Write-Host '  AED4Life dziala pod adresem:' -ForegroundColor Green
 Write-Host "  $url" -ForegroundColor Cyan
 Write-Host '  Zostaw to okno otwarte. Zamkniecie okna wylacza strone.'
 Write-Host ''

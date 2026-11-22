@@ -74,6 +74,7 @@ function Invoke-Nearest([String] $Query, [Int32] $ExpectedStatus = 200, [String]
 
 function Invoke-Report([String] $Metadata, [Byte[]] $Image = $null, [Int32] $ExpectedStatus = 201, [String] $FileName = 'report.png') {
     $form = [System.Net.Http.MultipartFormDataContent]::new()
+    $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, "$base/api/zgloszenia")
     try {
         $form.Add([System.Net.Http.StringContent]::new($Metadata, [Text.Encoding]::UTF8), 'metadata')
         if ($null -ne $Image) {
@@ -81,14 +82,20 @@ function Invoke-Report([String] $Metadata, [Byte[]] $Image = $null, [Int32] $Exp
             $content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::new('image/png')
             $form.Add($content, 'image', $FileName)
         }
-        $response = $client.PostAsync("$base/api/zgloszenia", $form).GetAwaiter().GetResult()
+        $request.Content = $form
+        # Let the server reject oversized bodies before the client starts streaming them.
+        $request.Headers.ExpectContinue = $true
+        $response = $client.SendAsync($request).GetAwaiter().GetResult()
         try {
             $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
             Assert ([Int32] $response.StatusCode -eq $ExpectedStatus) "Expected report status $ExpectedStatus, received $([Int32] $response.StatusCode): $body"
             if ($ExpectedStatus -eq 201) { return $body | ConvertFrom-Json }
             return $body
         } finally { $response.Dispose() }
-    } finally { $form.Dispose() }
+    } finally {
+        $request.Dispose()
+        $form.Dispose()
+    }
 }
 
 try {
@@ -109,6 +116,55 @@ try {
     foreach ($sqlFile in Get-ChildItem (Join-Path $projectDirectory 'database') -Filter '*.sql' | Sort-Object Name) {
         Invoke-TestSql (Get-Content -LiteralPath $sqlFile.FullName -Raw -Encoding UTF8) | Out-Null
     }
+    $dataRatingUpgrade = Get-Content -LiteralPath (Join-Path $projectDirectory 'database\014-aed-data-rating.sql') -Raw -Encoding UTF8
+    $availabilityUpgrade = Get-Content -LiteralPath (Join-Path $projectDirectory 'database\005-aed-availability.sql') -Raw -Encoding UTF8
+    Invoke-TestSql @'
+CREATE DATABASE checks_data_rating_upgrade;
+CREATE TABLE checks_data_rating_upgrade.AEDs LIKE AEDs;
+INSERT INTO checks_data_rating_upgrade.AEDs SELECT * FROM AEDs;
+UPDATE checks_data_rating_upgrade.AEDs SET DataRating=CASE MOD(Id,3) WHEN 0 THEN NULL WHEN 1 THEN 0 ELSE 1 END;
+ALTER TABLE checks_data_rating_upgrade.AEDs DROP CONSTRAINT CK_AEDs_DataRating,
+    RENAME COLUMN DataRating TO Rating, ADD CONSTRAINT CK_AEDs_Rating CHECK (Rating IS NULL OR Rating IN (0,1));
+CREATE TABLE checks_data_rating_upgrade.TranslationProfileUnits LIKE TranslationProfileUnits;
+INSERT INTO checks_data_rating_upgrade.TranslationProfileUnits SELECT * FROM TranslationProfileUnits;
+INSERT INTO checks_data_rating_upgrade.TranslationProfileUnits
+    (TranslationProfileId,Position,FromColumn,FromType,ToColumn,ToType)
+    VALUES (1,1000,'rating',0,'AEDs.Rating',0);
+'@ | Out-Null
+    $legacyAEDs = Invoke-TestSql 'SELECT * FROM checks_data_rating_upgrade.AEDs ORDER BY Id;'
+    Invoke-TestSql ("USE checks_data_rating_upgrade;`n" + $dataRatingUpgrade + "`n" + $availabilityUpgrade + "`n" + $dataRatingUpgrade) | Out-Null
+    Assert ((Invoke-TestSql 'SELECT * FROM checks_data_rating_upgrade.AEDs ORDER BY Id;') -ceq $legacyAEDs) 'DataRating rename changed existing AED values, including 0/1/NULL.'
+    Assert ((Invoke-TestSql @'
+SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='checks_data_rating_upgrade'
+AND TABLE_NAME='AEDs' AND COLUMN_NAME='Rating';
+'@) -eq '0') 'DataRating upgrade left or recreated the old AED Rating column.'
+    Assert ((Invoke-TestSql @'
+SELECT COUNT(*) FROM checks_data_rating_upgrade.TranslationProfileUnits
+WHERE Position=1000 AND FromColumn='rating' AND FromType=0 AND ToColumn='AEDs.DataRating' AND ToType=0;
+'@) -eq '1') 'DataRating upgrade did not preserve the stored translation mapping with its new destination.'
+    $dataRatingRejected = Invoke-TestSql @'
+SET @Rejected=0;
+DELIMITER //
+BEGIN NOT ATOMIC
+    DECLARE CONTINUE HANDLER FOR 4025 SET @Rejected=@Rejected+1;
+    UPDATE checks_data_rating_upgrade.AEDs SET DataRating=2;
+END//
+DELIMITER ;
+SELECT @Rejected;
+'@
+    Assert ($dataRatingRejected -eq '1') 'AED DataRating no longer enforces the original 0/1 rule.'
+    Invoke-TestSql 'ALTER TABLE checks_data_rating_upgrade.AEDs ADD COLUMN Rating INT NULL;' | Out-Null
+    $conflictingAEDs = Invoke-TestSql 'SELECT * FROM checks_data_rating_upgrade.AEDs ORDER BY Id;'
+    $failure = Invoke-TestSql ("USE checks_data_rating_upgrade;`n" + $dataRatingUpgrade) -ExpectFailure
+    Assert ($failure -like '*both Rating and DataRating*') 'Conflicting rating columns were not reported explicitly.'
+    Assert ((Invoke-TestSql 'SELECT * FROM checks_data_rating_upgrade.AEDs ORDER BY Id;') -ceq $conflictingAEDs) 'Failed rename changed existing AED values.'
+    Invoke-TestSql @'
+ALTER TABLE checks_data_rating_upgrade.AEDs
+    DROP COLUMN Rating, DROP CONSTRAINT CK_AEDs_DataRating, DROP COLUMN DataRating;
+'@ | Out-Null
+    Invoke-TestSql ("USE checks_data_rating_upgrade;`n" + $dataRatingUpgrade) | Out-Null
+    Assert ((Invoke-TestSql 'SELECT COUNT(*) FROM checks_data_rating_upgrade.AEDs WHERE DataRating IS NULL;') -eq '6') 'Upgrade invented ratings when neither legacy nor new rating column existed.'
+    Write-Host 'PASS: AED DataRating rename preserves all data and enum/null rules, migrates stored CSV destinations, and survives upgrade reruns.'
     Assert ((Invoke-TestSql 'SELECT COUNT(DISTINCT Type) FROM Users;') -eq '4') 'Sample users do not cover all user types.'
     Assert ((Invoke-TestSql "SELECT COUNT(*) FROM Users WHERE Username='admin' AND Type=0 AND FirstName='Jan' AND LastName='Kowalski' AND BirthDate='1980-01-01';") -eq '1') 'Fresh initialization did not create the bootstrap administrator with dummy profile data.'
     $bootstrapHash = Invoke-TestSql "SELECT PasswordHash FROM Users WHERE Username='admin';"
@@ -191,7 +247,7 @@ ALTER TABLE checks_reports_upgrade.AEDReports
     DROP COLUMN Description, DROP COLUMN AvailabilityStartHour, DROP COLUMN AvailabilityEndHour,
     DROP COLUMN IsPubliclyAccessible;
 '@ | Out-Null
-    $legacyReports = Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;'
+    $legacyReports = Invoke-TestSql 'SELECT Id,UserId,AEDId,PhotoUrl,Created,LastUpdated,Status FROM checks_reports_upgrade.AEDReports ORDER BY Id;'
     Invoke-TestSql ("USE checks_reports_upgrade;`n" + $placementUpgrade) | Out-Null
     Assert ((Invoke-TestSql @'
 SELECT Id,UserId,AEDId,PhotoUrl,Created,LastUpdated,Status FROM checks_reports_upgrade.AEDReports ORDER BY Id;
@@ -209,6 +265,72 @@ AvailabilityStartHour=22,AvailabilityEndHour=6,IsPubliclyAccessible=0 WHERE Stat
     Invoke-TestSql ("USE checks_reports_upgrade;`n" + $placementUpgrade + "`n" + $placementUpgrade) | Out-Null
     Assert ((Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;') -ceq $documentedReports) 'Repeated placement upgrade replaced known descriptions or optional data.'
     Write-Host 'PASS: Placement upgrade preserves legacy reports, backfills explicit descriptions, and preserves known metadata on reruns.'
+    $ratingUpgrade = Get-Content -LiteralPath (Join-Path $projectDirectory 'database\013-report-rating.sql') -Raw -Encoding UTF8
+    Invoke-TestSql 'ALTER TABLE checks_reports_upgrade.AEDReports DROP CONSTRAINT CK_AEDReports_Rating, DROP COLUMN Rating;' | Out-Null
+    $unratedReports = Invoke-TestSql @'
+SELECT Id,UserId,AEDId,PhotoUrl,Created,LastUpdated,Status,Description,
+AvailabilityStartHour,AvailabilityEndHour,IsPubliclyAccessible,
+ReporterLatitude,ReporterLongitude,Latitude,Longitude,CityName,StreetName,PostalCode,BuildingNumber
+FROM checks_reports_upgrade.AEDReports ORDER BY Id;
+'@
+    Invoke-TestSql ("USE checks_reports_upgrade;`n" + $ratingUpgrade) | Out-Null
+    Assert ((Invoke-TestSql @'
+SELECT Id,UserId,AEDId,PhotoUrl,Created,LastUpdated,Status,Description,
+AvailabilityStartHour,AvailabilityEndHour,IsPubliclyAccessible,
+ReporterLatitude,ReporterLongitude,Latitude,Longitude,CityName,StreetName,PostalCode,BuildingNumber
+FROM checks_reports_upgrade.AEDReports ORDER BY Id;
+'@) -ceq $unratedReports) 'Rating upgrade changed existing report metadata.'
+    Assert ((Invoke-TestSql 'SELECT COUNT(*) FROM checks_reports_upgrade.AEDReports WHERE Rating IS NULL;') -eq '4') 'Rating upgrade invented ratings for existing reports.'
+    Invoke-TestSql 'UPDATE checks_reports_upgrade.AEDReports SET Rating=CASE Status WHEN 0 THEN 0 WHEN 1 THEN 100 ELSE Rating END;' | Out-Null
+    $ratedReports = Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;'
+    Invoke-TestSql ("USE checks_reports_upgrade;`n" + $ratingUpgrade + "`n" + $ratingUpgrade) | Out-Null
+    Assert ((Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;') -ceq $ratedReports) 'Repeated rating upgrade changed zero, maximum, or unknown ratings.'
+    Write-Host 'PASS: Report rating upgrade preserves metadata, leaves old ratings unknown, and preserves 0/100/NULL on reruns.'
+    $locationUpgrade = Get-Content -LiteralPath (Join-Path $projectDirectory 'database\015-report-location.sql') -Raw -Encoding UTF8
+    Invoke-TestSql @'
+ALTER TABLE checks_reports_upgrade.AEDReports
+    DROP CONSTRAINT CK_AEDReports_ReporterLatitude, DROP CONSTRAINT CK_AEDReports_ReporterLongitude,
+    DROP CONSTRAINT CK_AEDReports_ReporterCoordinates, DROP CONSTRAINT CK_AEDReports_Latitude,
+    DROP CONSTRAINT CK_AEDReports_Longitude,
+    DROP COLUMN ReporterLatitude, DROP COLUMN ReporterLongitude, DROP COLUMN Latitude, DROP COLUMN Longitude,
+    DROP COLUMN CityName, DROP COLUMN StreetName, DROP COLUMN PostalCode, DROP COLUMN BuildingNumber;
+'@ | Out-Null
+    $unlocatedReports = Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;'
+    Invoke-TestSql ("USE checks_reports_upgrade;`n" + $locationUpgrade) | Out-Null
+    Assert ((Invoke-TestSql @'
+SELECT Id,UserId,AEDId,PhotoUrl,Created,LastUpdated,Status,Description,
+AvailabilityStartHour,AvailabilityEndHour,IsPubliclyAccessible,Rating
+FROM checks_reports_upgrade.AEDReports ORDER BY Id;
+'@) -ceq $unlocatedReports) 'Location upgrade changed existing report data.'
+    Assert ((Invoke-TestSql @'
+SELECT COUNT(*) FROM checks_reports_upgrade.AEDReports WHERE ReporterLatitude IS NULL AND ReporterLongitude IS NULL
+AND Latitude IS NULL AND Longitude IS NULL AND CityName IS NULL AND StreetName IS NULL
+AND PostalCode IS NULL AND BuildingNumber IS NULL;
+'@) -eq '4') 'Location upgrade invented locations for old reports.'
+    Invoke-TestSql @'
+UPDATE checks_reports_upgrade.AEDReports SET ReporterLatitude=0,ReporterLongitude=0,Latitude=90,Longitude=-180,
+CityName='Snapshot city',StreetName='Snapshot street',PostalCode='00-001',BuildingNumber=42 WHERE Status=0;
+UPDATE checks_reports_upgrade.AEDReports SET ReporterLatitude=-90,ReporterLongitude=180,Latitude=-90,Longitude=180 WHERE Status=1;
+'@ | Out-Null
+    $locatedReports = Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;'
+    Invoke-TestSql ("USE checks_reports_upgrade;`n" + $locationUpgrade + "`n" + $locationUpgrade) | Out-Null
+    Assert ((Invoke-TestSql 'SELECT * FROM checks_reports_upgrade.AEDReports ORDER BY Id;') -ceq $locatedReports) 'Repeated location upgrade changed known locations or coordinate bounds.'
+    $locationChecks = Invoke-TestSql @'
+SET @Rejected=0;
+DELIMITER //
+BEGIN NOT ATOMIC
+    DECLARE CONTINUE HANDLER FOR 4025 SET @Rejected=@Rejected+1;
+    UPDATE checks_reports_upgrade.AEDReports SET ReporterLatitude=91,ReporterLongitude=0;
+    UPDATE checks_reports_upgrade.AEDReports SET ReporterLatitude=0,ReporterLongitude=-181;
+    UPDATE checks_reports_upgrade.AEDReports SET ReporterLatitude=0,ReporterLongitude=NULL;
+    UPDATE checks_reports_upgrade.AEDReports SET Latitude=-91;
+    UPDATE checks_reports_upgrade.AEDReports SET Longitude=181;
+END//
+DELIMITER ;
+SELECT @Rejected;
+'@
+    Assert ($locationChecks -eq '5') 'Report GPS bounds or reporter coordinate pairing are not enforced in SQL.'
+    Write-Host 'PASS: Report location upgrade preserves old data, leaves unknown locations NULL, validates GPS, and preserves snapshots on reruns.'
     $reportChecks = Invoke-TestSql @'
 START TRANSACTION;
 SET @PasswordHash=(SELECT PasswordHash FROM Users ORDER BY Id LIMIT 1);
@@ -218,15 +340,15 @@ SET @UserId=LAST_INSERT_ID();
 SET @AddressId=(SELECT AddressId FROM Users WHERE Id=@UserId);
 SET @AEDId=(SELECT MIN(Id) FROM AEDs);
 INSERT INTO AEDReports (UserId, AEDId, PhotoUrl, Created, LastUpdated, Status,
-    Description, AvailabilityStartHour, AvailabilityEndHour, IsPubliclyAccessible)
+    Description, AvailabilityStartHour, AvailabilityEndHour, IsPubliclyAccessible, Rating)
 VALUES (@UserId, NULL, '/photos/new-aed.jpg', '2026-01-01 10:00:00.123456', '2026-01-01 10:00:00.123456', 0,
-        'Beside the main entrance.',9,NULL,NULL),
+        'Beside the main entrance.',9,NULL,NULL,0),
        (@UserId, @AEDId, '/photos/test.jpg', '2026-01-01 10:00:00.123456', '2026-01-02 11:00:00.654321', 1,
-        'Inside the staff room.',22,6,0);
-SELECT COUNT(*) FROM AEDReports WHERE UserId=@UserId AND AEDId IS NULL AND PhotoUrl='/photos/new-aed.jpg';
+        'Inside the staff room.',22,6,0,100);
+SELECT COUNT(*) FROM AEDReports WHERE UserId=@UserId AND AEDId IS NULL AND PhotoUrl='/photos/new-aed.jpg' AND Rating=0;
 SELECT COUNT(*) FROM AEDReports WHERE UserId=@UserId AND AEDId=@AEDId AND PhotoUrl='/photos/test.jpg'
 AND MICROSECOND(Created)=123456 AND MICROSECOND(LastUpdated)=654321 AND Status=1
-AND Description='Inside the staff room.' AND AvailabilityStartHour=22 AND AvailabilityEndHour=6 AND IsPubliclyAccessible=0;
+AND Description='Inside the staff room.' AND AvailabilityStartHour=22 AND AvailabilityEndHour=6 AND IsPubliclyAccessible=0 AND Rating=100;
 SET @Rejected=0;
 DELIMITER //
 BEGIN NOT ATOMIC
@@ -263,6 +385,8 @@ BEGIN NOT ATOMIC
     UPDATE AEDReports SET AvailabilityEndHour=25 WHERE UserId=@UserId;
     UPDATE AEDReports SET AvailabilityStartHour=10, AvailabilityEndHour=10 WHERE UserId=@UserId;
     UPDATE AEDReports SET IsPubliclyAccessible=2 WHERE UserId=@UserId;
+    UPDATE AEDReports SET Rating=-1 WHERE UserId=@UserId;
+    UPDATE AEDReports SET Rating=101 WHERE UserId=@UserId;
     DELETE FROM Users WHERE Id=@UserId;
     DELETE FROM AEDs WHERE Id=@AEDId;
     DELETE FROM Addresses WHERE Id=@AddressId;
@@ -271,7 +395,7 @@ DELIMITER ;
 SELECT @Rejected;
 ROLLBACK;
 '@
-    Assert ($reportChecks -ceq "1`n1`n34") 'User/report constraints, required descriptions/photo paths, optional hours/accessibility, date precision, or deletion restrictions are incorrect.'
+    Assert ($reportChecks -ceq "1`n1`n36") 'User/report constraints, descriptions/photo paths, optional hours/accessibility/ratings, date precision, or deletion restrictions are incorrect.'
     Write-Host 'PASS: Required password hashes, explicit legacy provisioning failure/recovery, credential preservation, and repeatable password upgrade.'
     Write-Host 'PASS: Users/reports schema upgrade, sample types/statuses, required personal data/photo paths, unique usernames, optional AEDs, and restricted relationships.'
     $before = Get-DataSnapshot
@@ -284,7 +408,7 @@ ALTER TABLE Addresses MODIFY COLUMN StreetId BIGINT NOT NULL, MODIFY COLUMN City
 ALTER TABLE AEDOwners MODIFY COLUMN RegonNumber VARCHAR(14) NOT NULL, MODIFY COLUMN IsPublic TINYINT(1) NOT NULL,
     MODIFY COLUMN Name LONGTEXT NOT NULL, MODIFY COLUMN CityId BIGINT NOT NULL, MODIFY COLUMN StreetId BIGINT NOT NULL;
 ALTER TABLE AEDs MODIFY COLUMN AddressId BIGINT NOT NULL, MODIFY COLUMN SerialNumber LONGTEXT NOT NULL,
-    MODIFY COLUMN Rating INT NOT NULL DEFAULT 0;
+    MODIFY COLUMN DataRating INT NOT NULL DEFAULT 0;
 '@ | Out-Null
     $nullableUpgrade = Get-Content -LiteralPath (Join-Path $projectDirectory 'database\007-nullable-import-data.sql') -Raw -Encoding UTF8
     Invoke-TestSql ($nullableUpgrade + "`n" + $nullableUpgrade) | Out-Null
@@ -323,7 +447,7 @@ $upgradeSql
     Assert ((Invoke-TestSql @'
 SELECT COUNT(*) FROM checks_coordinates_upgrade.AEDs u JOIN AEDs a ON u.Id=a.Id
 WHERE u.SerialNumber=a.SerialNumber AND u.AddressId=a.AddressId AND u.Created=a.Created
-AND u.Rating=a.Rating AND u.Latitude IS NULL AND u.Longitude IS NULL;
+AND u.DataRating=a.DataRating AND u.Latitude IS NULL AND u.Longitude IS NULL;
 '@) -eq '6') 'Coordinate upgrade did not preserve existing AEDs with unknown coordinates.'
     $rejected = Invoke-TestSql @'
 SET @RejectedCoordinates = 0;
@@ -376,26 +500,31 @@ SELECT @RejectedCoordinates;
     $aedId = [Int64] (Invoke-TestSql 'SELECT MIN(Id) FROM AEDs;')
     $reportMetadata = @{
         userId = $userId; aedId = $aedId; description = '  On the wall beside reception.  '
-        availabilityStartHour = 22; availabilityEndHour = 6; isPubliclyAccessible = $false
+        availabilityStartHour = 22; availabilityEndHour = 6; isPubliclyAccessible = $false; rating = 0
     } | ConvertTo-Json -Compress
     $png = [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0AAAAABJRU5ErkJggg==')
     $report = Invoke-Report $reportMetadata -Image $png -FileName '..\..\untrusted.html'
     Assert ($report.userId -eq $userId -and $report.aedId -eq $aedId -and $report.status -eq 'Submitted') 'Report response has incorrect metadata or status.'
     Assert ($report.description -eq 'On the wall beside reception.' -and $report.availabilityStartHour -eq 22 -and $report.availabilityEndHour -eq 6 -and $report.isPubliclyAccessible -eq $false) 'Report response lost the trimmed description, overnight hours, or false accessibility.'
+    Assert ($report.rating -eq 0) 'A zero report rating was not returned correctly.'
     Assert ($report.photoUrl -cmatch '^[0-9a-f]{32}\.png$') 'Upload did not generate a safe filename based on the image signature.'
     Assert ([Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $imageDirectory $report.photoUrl))) -ceq [Convert]::ToBase64String($png)) 'Uploaded image bytes were not persisted intact outside the database.'
-    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDReports WHERE Id=$($report.id) AND UserId=$userId AND AEDId=$aedId AND PhotoUrl='$($report.photoUrl)' AND Description='On the wall beside reception.' AND AvailabilityStartHour=22 AND AvailabilityEndHour=6 AND IsPubliclyAccessible=0 AND Status=0 AND Created=LastUpdated AND Created BETWEEN UTC_TIMESTAMP()-INTERVAL 1 MINUTE AND UTC_TIMESTAMP()+INTERVAL 1 MINUTE;") -eq '1') 'Report placement metadata, UTC timestamps, or image path were not persisted.'
+    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDReports WHERE Id=$($report.id) AND UserId=$userId AND AEDId=$aedId AND PhotoUrl='$($report.photoUrl)' AND Description='On the wall beside reception.' AND AvailabilityStartHour=22 AND AvailabilityEndHour=6 AND IsPubliclyAccessible=0 AND Rating=0 AND Status=0 AND Created=LastUpdated AND Created BETWEEN UTC_TIMESTAMP()-INTERVAL 1 MINUTE AND UTC_TIMESTAMP()+INTERVAL 1 MINUTE;") -eq '1') 'Report placement metadata, rating, UTC timestamps, or image path were not persisted.'
     $urlMetadata = @{ userId = $userId; photoUrl = '  https://example.invalid/aed.jpg  '; description = 'By the entrance.' } | ConvertTo-Json -Compress
     $urlReport = Invoke-Report $urlMetadata
     Assert ($null -eq $urlReport.aedId -and $urlReport.photoUrl -eq 'https://example.invalid/aed.jpg') 'Metadata-only report did not preserve optional AED/trimmed external photo URL.'
     Assert ($urlReport.description -eq 'By the entrance.' -and $null -eq $urlReport.availabilityStartHour -and $null -eq $urlReport.availabilityEndHour -and $null -eq $urlReport.isPubliclyAccessible) 'Omitted report hours/accessibility were not kept unknown.'
+    Assert ($null -eq $urlReport.rating -and (Invoke-TestSql "SELECT COUNT(*) FROM AEDReports WHERE Id=$($urlReport.id) AND Rating IS NULL;") -eq '1') 'An omitted report rating was not kept unknown.'
+    $nullRatingReport = Invoke-Report (@{ userId = $userId; photoUrl = '/photos/unrated.jpg'; description = 'Entrance.'; rating = $null } | ConvertTo-Json -Compress)
+    Assert ($null -eq $nullRatingReport.rating) 'An explicitly null report rating was rejected or defaulted.'
     foreach ($hours in @(@(0,24), @(8,$null), @($null,18))) {
         $optionalMetadata = @{
             userId = $userId; photoUrl = '/photos/opening-hours.jpg'; description = 'Lobby wall.'
-            availabilityStartHour = $hours[0]; availabilityEndHour = $hours[1]; isPubliclyAccessible = $true
+            availabilityStartHour = $hours[0]; availabilityEndHour = $hours[1]; isPubliclyAccessible = $true; rating = 100
         } | ConvertTo-Json -Compress
         $optionalReport = Invoke-Report $optionalMetadata
         Assert ($optionalReport.availabilityStartHour -eq $hours[0] -and $optionalReport.availabilityEndHour -eq $hours[1] -and $optionalReport.isPubliclyAccessible -eq $true) 'All-day/partial opening hours or public accessibility were rejected.'
+        Assert ($optionalReport.rating -eq 100 -and (Invoke-TestSql "SELECT COUNT(*) FROM AEDReports WHERE Id=$($optionalReport.id) AND Rating=100;") -eq '1') 'The maximum report rating was not returned or persisted.'
     }
     $jpeg = [Byte[]] @(255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1, 255, 217)
     $jpegReport = Invoke-Report $reportMetadata -Image $jpeg
@@ -420,9 +549,15 @@ SELECT @RejectedCoordinates;
         @{ availabilityStartHour = -1 }, @{ availabilityStartHour = 24 },
         @{ availabilityEndHour = -1 }, @{ availabilityEndHour = 25 },
         @{ availabilityStartHour = 8; availabilityEndHour = 8 },
-        @{ isPubliclyAccessible = 'yes' }, @{ isPubliclyAccessible = 2 })) {
+        @{ isPubliclyAccessible = 'yes' }, @{ isPubliclyAccessible = 2 },
+        @{ rating = 12.5 }, @{ rating = 'invalid' }, @{ rating = $true })) {
         $invalidMetadata = @{ userId = $userId; photoUrl = '/a.jpg'; description = 'Lobby.' } + $invalidOptional
         Invoke-Report ($invalidMetadata | ConvertTo-Json -Compress) -ExpectedStatus 400 | Out-Null
+    }
+    foreach ($invalidRating in @(-1,101)) {
+        $invalidMetadata = @{ userId = $userId; photoUrl = '/a.jpg'; description = 'Lobby.'; rating = $invalidRating }
+        $failure = Invoke-Report ($invalidMetadata | ConvertTo-Json -Compress) -ExpectedStatus 400 | ConvertFrom-Json
+        Assert ($null -ne $failure.errors.rating) 'An out-of-range rating did not return a rating-specific validation error.'
     }
     Invoke-Report $urlMetadata -Image $png -ExpectedStatus 400 | Out-Null
     Invoke-Report $reportMetadata -Image ([Byte[]]::new(0)) -ExpectedStatus 400 | Out-Null
@@ -446,6 +581,110 @@ SELECT @RejectedCoordinates;
     Assert (@([IO.Directory]::GetFiles($imageDirectory)).Count -eq $filesBefore) 'Rejected report requests left orphan image files.'
     Write-Host 'PASS: Multipart report creation, optional/external images, generated filenames, PNG/JPEG signatures, limits, validation, storage errors, and failed-save cleanup.'
 
+    Invoke-TestSql @'
+INSERT INTO Cities (Name) VALUES ('REPORT-LOCATION-CITY');
+SET @CityId=LAST_INSERT_ID();
+INSERT INTO Streets (Name) VALUES ('REPORT-LOCATION-STREET');
+SET @StreetId=LAST_INSERT_ID();
+INSERT INTO Streets (Name) VALUES ('  ');
+SET @BlankStreetId=LAST_INSERT_ID();
+INSERT INTO PostalCodes (Code) VALUES ('00-955');
+SET @PostalCodeId=LAST_INSERT_ID();
+INSERT INTO Addresses (CityId,StreetId,PostalCodeId,BuildingNumber) VALUES (@CityId,@StreetId,@PostalCodeId,17);
+SET @FullAddressId=LAST_INSERT_ID();
+INSERT INTO Addresses (CityId,StreetId) VALUES (@CityId,@BlankStreetId);
+SET @SparseAddressId=LAST_INSERT_ID();
+INSERT INTO AEDs (SerialNumber,AddressId,Latitude,Longitude,Access,AvailabilityStartHour,AvailabilityEndHour,Created,LastUpdated) VALUES
+('REPORT-LOCATION-SPARSE',@SparseAddressId,NULL,NULL,NULL,NULL,NULL,NOW(6),NOW(6)),
+('REPORT-LOCATION-NEAR',@FullAddressId,0,0.0001,2,0,1,NOW(6),NOW(6)),
+('REPORT-LOCATION-TIE',NULL,0,0.0001,0,NULL,NULL,NOW(6),NOW(6)),
+('REPORT-LOCATION-FARTHER',NULL,0,0.0002,0,NULL,NULL,NOW(6),NOW(6)),
+('REPORT-LOCATION-RADIUS',NULL,30,40,NULL,NULL,NULL,NOW(6),NOW(6)),
+('REPORT-LOCATION-DATELINE',NULL,0,-179.9998,NULL,NULL,NULL,NOW(6),NOW(6)),
+('REPORT-LOCATION-POLE',NULL,90,1,NULL,NULL,NULL,NOW(6),NOW(6));
+'@ | Out-Null
+    $locationDataSql = (@('Cities', 'Streets', 'PostalCodes', 'Addresses', 'AEDOwners', 'AEDs', 'Users') |
+        ForEach-Object { "SELECT * FROM ``$_`` ORDER BY Id;" }) -join "`n"
+    $beforeLocationData = Invoke-TestSql $locationDataSql
+    $nearId = [Int64] (Invoke-TestSql "SELECT Id FROM AEDs WHERE SerialNumber='REPORT-LOCATION-NEAR';")
+    $sparseId = [Int64] (Invoke-TestSql "SELECT Id FROM AEDs WHERE SerialNumber='REPORT-LOCATION-SPARSE';")
+    $locationMetadata = @{
+        userId = $userId; photoUrl = '/photos/location.jpg'; description = 'Location integration check.'
+        reporterLatitude = 0; reporterLongitude = 0; latitude = 60; longitude = 70
+        cityName = 'Request city'; streetName = ' Request street '; postalCode = ' 00-999 '; buildingNumber = 9
+    }
+    $matched = Invoke-Report ($locationMetadata | ConvertTo-Json -Compress)
+    Assert ($matched.aedId -eq $nearId -and $matched.reporterLatitude -eq 0 -and $matched.reporterLongitude -eq 0) 'Report matching ignored reporter GPS, nearest/tie ordering, or private/closed AEDs.'
+    Assert ($matched.latitude -eq 0 -and $matched.longitude -eq 0.0001 -and $matched.cityName -eq 'REPORT-LOCATION-CITY' -and $matched.streetName -eq 'REPORT-LOCATION-STREET' -and $matched.postalCode -eq '00-955' -and $matched.buildingNumber -eq 17) 'Known database AED location did not take precedence over supplied fields.'
+    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDReports WHERE Id=$($matched.id) AND AEDId=$nearId AND ReporterLatitude=0 AND ReporterLongitude=0 AND Latitude=0 AND Longitude=0.0001 AND CityName='REPORT-LOCATION-CITY' AND StreetName='REPORT-LOCATION-STREET' AND PostalCode='00-955' AND BuildingNumber=17;") -eq '1') 'Matched location was not persisted on the report.'
+    $explicit = Invoke-Report (($locationMetadata + @{ aedId = $sparseId }) | ConvertTo-Json -Compress)
+    Assert ($explicit.aedId -eq $sparseId -and $explicit.latitude -eq 60 -and $explicit.longitude -eq 70) 'Explicit AED ID did not take precedence or missing database GPS did not use request GPS.'
+    Assert ($explicit.cityName -eq 'REPORT-LOCATION-CITY' -and $explicit.streetName -eq 'Request street' -and $explicit.postalCode -eq '00-999' -and $explicit.buildingNumber -eq 9) 'Sparse/blank database address fields did not fall back individually to trimmed request fields.'
+    $farExplicit = Invoke-Report (@{
+        userId = $userId; aedId = $aedId; photoUrl = '/photos/location.jpg'; description = 'Location integration check.'
+        reporterLatitude = 0; reporterLongitude = 0
+    } | ConvertTo-Json -Compress)
+    Assert ($farExplicit.aedId -eq $aedId -and $farExplicit.reporterLatitude -eq 0 -and $farExplicit.latitude -ne 0) 'Explicit AED ID was incorrectly restricted by the reporter matching radius.'
+    $insideLatitude = 30 + 99.9 / 6371000 * 180 / [Math]::PI
+    $inside = Invoke-Report (@{
+        userId = $userId; photoUrl = '/photos/location.jpg'; description = 'Location integration check.'
+        reporterLatitude = $insideLatitude; reporterLongitude = 40
+    } | ConvertTo-Json -Compress)
+    Assert ($inside.latitude -eq 30 -and $inside.longitude -eq 40 -and $null -ne $inside.aedId) 'An AED inside the 100m radius was not matched.'
+    $outsideLatitude = 30 + 100.1 / 6371000 * 180 / [Math]::PI
+    $outside = Invoke-Report (@{
+        userId = $userId; photoUrl = '/photos/location.jpg'; description = 'Location integration check.'
+        reporterLatitude = $outsideLatitude; reporterLongitude = 40; latitude = 50; longitude = 20
+        cityName = ' New city '; streetName = '  '; postalCode = ' '; buildingNumber = 5
+    } | ConvertTo-Json -Compress)
+    Assert ($null -eq $outside.aedId -and $outside.latitude -eq 50 -and $outside.longitude -eq 20 -and $outside.cityName -eq 'New city' -and $null -eq $outside.streetName -and $null -eq $outside.postalCode -and $outside.buildingNumber -eq 5) 'Outside-radius location was not kept on the report with normalized fallback metadata.'
+    $unknown = Invoke-Report (@{
+        userId = $userId; photoUrl = '/photos/location.jpg'; description = 'Location integration check.'
+        reporterLatitude = -90; reporterLongitude = -180
+    } | ConvertTo-Json -Compress)
+    Assert ($null -eq $unknown.aedId -and $null -eq $unknown.latitude -and $null -eq $unknown.longitude) 'Reporter GPS was incorrectly reused as the AED location when no AED matched.'
+    $manual = Invoke-Report (@{
+        userId = $userId; photoUrl = '/photos/location.jpg'; description = 'Location integration check.'
+        latitude = -90; longitude = 180; cityName = 'Manual city'
+    } | ConvertTo-Json -Compress)
+    Assert ($null -eq $manual.aedId -and $null -eq $manual.reporterLatitude -and $null -eq $manual.reporterLongitude -and $manual.latitude -eq -90 -and $manual.longitude -eq 180 -and $manual.cityName -eq 'Manual city') 'Manual location without reporter GPS or inclusive coordinate bounds were rejected.'
+    $dateline = Invoke-Report (@{
+        userId = $userId; photoUrl = '/photos/location.jpg'; description = 'Location integration check.'
+        reporterLatitude = 0; reporterLongitude = 179.9998
+    } | ConvertTo-Json -Compress)
+    Assert ($dateline.longitude -eq -179.9998 -and $null -ne $dateline.aedId) 'Report radius matching did not wrap across the antimeridian.'
+    $pole = Invoke-Report (@{
+        userId = $userId; photoUrl = '/photos/location.jpg'; description = 'Location integration check.'
+        reporterLatitude = 90; reporterLongitude = 179
+    } | ConvertTo-Json -Compress)
+    Assert ($pole.latitude -eq 90 -and $pole.longitude -eq 1 -and $null -ne $pole.aedId) 'Report radius matching ignored polar geometry.'
+    Assert ((Invoke-TestSql $locationDataSql) -ceq $beforeLocationData) 'Report submission created or modified AEDs, address data, owners, or users.'
+    $beforeInvalidLocation = Get-DataSnapshot
+    $filesBefore = @([IO.Directory]::GetFiles($imageDirectory)).Count
+    foreach ($invalidLocation in @(
+        @{ reporterLatitude = 0 }, @{ reporterLongitude = 0 },
+        @{ reporterLatitude = -91; reporterLongitude = 0 }, @{ reporterLatitude = 0; reporterLongitude = 181 },
+        @{ latitude = 91 }, @{ longitude = -181 }, @{ latitude = 'NaN' }, @{ longitude = 'Infinity' },
+        @{ postalCode = '1234567' }, @{ buildingNumber = 1.5 }, @{ cityName = 123 })) {
+        $invalidMetadata = @{
+            userId = $userId; description = 'Location integration check.'
+        } + $invalidLocation
+        Invoke-Report ($invalidMetadata | ConvertTo-Json -Compress) -Image $png -ExpectedStatus 400 | Out-Null
+    }
+    Assert ((Get-DataSnapshot) -ceq $beforeInvalidLocation) 'Invalid location metadata changed database records.'
+    Assert (@([IO.Directory]::GetFiles($imageDirectory)).Count -eq $filesBefore) 'Invalid location metadata saved uploaded images.'
+    Invoke-TestSql "UPDATE AEDs SET Longitude=0.005 WHERE Id=$nearId;" | Out-Null
+    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDReports WHERE Id=$($matched.id) AND Longitude=0.0001;") -eq '1') 'Existing report location changed when the AED was later edited.'
+    Invoke-TestSql @'
+DELETE FROM AEDReports WHERE Description='Location integration check.';
+DELETE FROM AEDs WHERE SerialNumber LIKE 'REPORT-LOCATION-%';
+DELETE FROM Addresses WHERE CityId IN (SELECT Id FROM Cities WHERE Name='REPORT-LOCATION-CITY');
+DELETE FROM Cities WHERE Name='REPORT-LOCATION-CITY';
+DELETE FROM Streets WHERE Name IN ('REPORT-LOCATION-STREET','  ');
+DELETE FROM PostalCodes WHERE Code='00-955';
+'@ | Out-Null
+    Write-Host 'PASS: Reporter GPS, nearest/all-access matching within 100m, deterministic ties, database precedence, sparse/manual fallback, snapshots, GPS validation, antimeridian/poles, and no AED/address mutations.'
+
     $mappings = @(
         @('city', 'STRING', 'Cities.Name', 'STRING'),
         @('street', 'STRING', 'Streets.Name', 'STRING'),
@@ -455,7 +694,7 @@ SELECT @RejectedCoordinates;
         @('access', 'INTEGER', 'AEDs.Access', 'INTEGER'),
         @('start', 'INTEGER', 'AEDs.AvailabilityStartHour', 'INTEGER'),
         @('end', 'INTEGER', 'AEDs.AvailabilityEndHour', 'INTEGER'),
-        @('rating', 'INTEGER', 'AEDs.Rating', 'INTEGER'),
+        @('rating', 'INTEGER', 'AEDs.DataRating', 'INTEGER'),
         @('regon', 'STRING', 'AEDOwners.RegonNumber', 'STRING'),
         @('owner', 'STRING', 'AEDOwners.Name', 'STRING'),
         @('public', 'BOOLEAN', 'AEDOwners.IsPublic', 'BOOLEAN')
@@ -477,7 +716,7 @@ JOIN Cities c ON d.CityId=c.Id JOIN Streets s ON d.StreetId=s.Id JOIN PostalCode
 JOIN AEDOwners o ON a.OwnerId=o.Id
 WHERE a.SerialNumber='IMPORT-001' AND c.Name='Import City, North' AND s.Name='Main "Test" Street'
 AND p.Code='00-901' AND d.BuildingNumber=10 AND o.RegonNumber='000001234' AND o.IsPublic=1
-AND o.Name LIKE 'School%North' AND a.Access=0 AND a.Rating=1 AND a.AvailabilityEndHour=24;
+AND o.Name LIKE 'School%North' AND a.Access=0 AND a.DataRating=1 AND a.AvailabilityEndHour=24;
 '@
     Assert ($related -eq '1') 'Imported relationships, quoted values, leading zeros, or typed values are incorrect.'
     $before = Get-DataSnapshot
@@ -508,7 +747,7 @@ Other City,Other Street,00-903,10.5,IMPORT-BAD,1,,,0,000009999,Invalid row,true
 
     New-TestProfile 'AED update' @(
         @('serial', 'STRING', 'AEDs.SerialNumber', 'STRING'),
-        @('rating', 'STRING', 'AEDs.Rating', 'INTEGER'),
+        @('rating', 'STRING', 'AEDs.DataRating', 'INTEGER'),
         @('access', 'INTEGER', 'AEDs.Access', 'INTEGER'),
         @('start', 'INTEGER', 'AEDs.AvailabilityStartHour', 'INTEGER'),
         @('end', 'INTEGER', 'AEDs.AvailabilityEndHour', 'INTEGER')
@@ -516,10 +755,11 @@ Other City,Other Street,00-903,10.5,IMPORT-BAD,1,,,0,000009999,Invalid row,true
     $createdBefore = Invoke-TestSql "SELECT Created FROM AEDs WHERE SerialNumber='IMPORT-001';"
     $result = Invoke-Import 'AED update' "serial,rating,access,start,end`nIMPORT-001,0,,,"
     Assert ($result.tables.AEDs.updated -eq 1) 'Existing AED was not updated.'
-    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDs WHERE SerialNumber='IMPORT-001' AND Rating=0 AND Access IS NULL AND AvailabilityStartHour IS NULL AND AvailabilityEndHour IS NULL;") -eq '1') 'Nullable fields did not become NULL.'
+    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDs WHERE SerialNumber='IMPORT-001' AND DataRating=0 AND Access IS NULL AND AvailabilityStartHour IS NULL AND AvailabilityEndHour IS NULL;") -eq '1') 'Nullable fields did not become NULL.'
     Assert ((Invoke-TestSql "SELECT Created FROM AEDs WHERE SerialNumber='IMPORT-001';") -ceq $createdBefore) 'AED Created timestamp was overwritten.'
     $before = Get-DataSnapshot
     Invoke-Import 'AED update' "serial,rating,access,start,end`nIMPORT-001,1,,0,0" 400 | Out-Null
+    Invoke-Import 'AED update' "serial,rating,access,start,end`nIMPORT-001,2,,," 400 | Out-Null
     Assert ((Get-DataSnapshot) -ceq $before) 'Invalid availability hours changed existing records.'
     Invoke-Import 'Owner update' "regon,owner`n000009999,Unknown location" | Out-Null
     Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDOwners WHERE RegonNumber='000009999' AND Name='Unknown location' AND CityId IS NULL AND StreetId IS NULL AND IsPublic IS NULL;") -eq '1') 'Missing optional owner data did not become NULL.'
@@ -555,7 +795,7 @@ Other City,Other Street,00-903,10.5,IMPORT-BAD,1,,,0,000009999,Invalid row,true
         @('serial', 'STRING', 'AEDs.SerialNumber', 'STRING')
     ) | Out-Null
     Invoke-Import 'Minimal AED' "city,street,postal,building,serial`nMinimal City,Minimal Street,00-905,1,IMPORT-MINIMAL" | Out-Null
-    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDs WHERE SerialNumber='IMPORT-MINIMAL' AND Rating IS NULL AND Access IS NULL AND Latitude IS NULL AND Longitude IS NULL AND Created>=CURRENT_DATE AND LastUpdated>=CURRENT_DATE;") -eq '1') 'Default AED fields were not supplied.'
+    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDs WHERE SerialNumber='IMPORT-MINIMAL' AND DataRating IS NULL AND Access IS NULL AND Latitude IS NULL AND Longitude IS NULL AND Created>=CURRENT_DATE AND LastUpdated>=CURRENT_DATE;") -eq '1') 'Default AED fields were not supplied.'
     New-TestProfile 'GPS update' @(
         @('serial', 'STRING', 'AEDs.SerialNumber', 'STRING'),
         @('latitude', 'DOUBLE', 'AEDs.Latitude', 'DOUBLE'),
@@ -643,7 +883,7 @@ SELECT COUNT(*) FROM AEDs a JOIN Addresses d ON a.AddressId=d.Id
 JOIN Cities c ON d.CityId=c.Id JOIN Streets s ON d.StreetId=s.Id JOIN PostalCodes p ON d.PostalCodeId=p.Id
 JOIN AEDOwners o ON a.OwnerId=o.Id
 WHERE c.Name='OpenAED City' AND s.Name='OpenAED Street' AND p.Code='00-981'
-AND d.BuildingNumber IS NULL AND a.SerialNumber IS NULL AND a.Rating IS NULL
+AND d.BuildingNumber IS NULL AND a.SerialNumber IS NULL AND a.DataRating IS NULL
 AND o.Name='OpenAED Operator' AND o.RegonNumber IS NULL AND o.IsPublic IS NULL;
 '@) -eq '1') 'Sparse OpenAEDMap relationships or nullable values are incorrect.'
     $before = Get-DataSnapshot
@@ -671,7 +911,7 @@ SELECT COUNT(*) FROM AEDs a JOIN Addresses d ON a.AddressId=d.Id JOIN Cities c O
 WHERE c.Name='Partial OpenAED City' AND d.StreetId IS NULL AND d.PostalCodeId IS NULL AND d.BuildingNumber IS NULL
 AND a.SerialNumber IS NULL AND a.Latitude IS NULL AND a.Longitude=21.5;
 '@) -eq '1') 'Partial address or numeric NULL values were not stored correctly.'
-    Assert ((Invoke-TestSql 'SELECT COUNT(*) FROM AEDs WHERE SerialNumber IS NULL AND AddressId IS NULL AND Latitude IS NULL AND Longitude IS NULL AND Rating IS NULL;') -eq '2') 'Anonymous rows should contain NULLs, not invented identifiers.'
+    Assert ((Invoke-TestSql 'SELECT COUNT(*) FROM AEDs WHERE SerialNumber IS NULL AND AddressId IS NULL AND Latitude IS NULL AND Longitude IS NULL AND DataRating IS NULL;') -eq '2') 'Anonymous rows should contain NULLs, not invented identifiers.'
     $result = Invoke-Import 'openaedmap-2' $nullCsv
     Assert ($result.tables.AEDs.inserted -eq 3 -and $result.tables.AEDOwners.inserted -eq 0) 'Records without a reliable AED identity were incorrectly merged.'
 
@@ -681,7 +921,7 @@ AND a.SerialNumber IS NULL AND a.Latitude IS NULL AND a.Longitude=21.5;
     Assert ($nullableOwner.Count -eq 1) 'Owner API hid a record with unknown location.'
     Assert ($null -eq $nullableOwner[0].name -and $null -eq $nullableOwner[0].isPublic -and $null -eq $nullableOwner[0].cityName -and $null -eq $nullableOwner[0].streetName) 'Owner API did not return nullable fields as NULL.'
     Invoke-Import 'AED update' "serial,rating,access,start,end`nIMPORT-001,NULL,\N,7," | Out-Null
-    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDs WHERE SerialNumber='IMPORT-001' AND Rating IS NULL AND Access IS NULL AND AvailabilityStartHour=7 AND AvailabilityEndHour IS NULL;") -eq '1') 'Independent unknown availability hours were rejected.'
+    Assert ((Invoke-TestSql "SELECT COUNT(*) FROM AEDs WHERE SerialNumber='IMPORT-001' AND DataRating IS NULL AND Access IS NULL AND AvailabilityStartHour=7 AND AvailabilityEndHour IS NULL;") -eq '1') 'Independent unknown availability hours were rejected.'
     New-TestProfile 'Optional timestamps' @(
         @('serial', 'STRING', 'AEDs.SerialNumber', 'STRING'),
         @('created', 'STRING', 'AEDs.Created', 'STRING'),

@@ -1,12 +1,12 @@
 @echo off
-title Punkt Zycia - wdrozenie na Azure
+title AED4Life - wdrozenie na Azure
 set IP=20.215.200.98
 set U=azureuser
 cd /d "%~dp0"
 set MODEL=
 if exist model.env set MODEL=model.env
 echo [1/2] Wysylam pliki na %U%@%IP% (wpisz haslo do VM)
-scp -o StrictHostKeyChecking=accept-new -r index.html sw.js manifest.webmanifest icon-192.png icon-512.png deploy.sh %MODEL% ..\zrodla\aedverify %U%@%IP%:PunktZycia/
+scp -o StrictHostKeyChecking=accept-new -r index.html sw.js manifest.webmanifest icon-192.png icon-512.png AED4life_logo.png deploy.sh %MODEL% ..\zrodla\aedverify %U%@%IP%:PunktZycia/
 if errorlevel 1 goto blad
 echo.
 echo [2/2] Instaluje serwer i HTTPS (wpisz haslo jeszcze raz)

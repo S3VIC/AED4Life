@@ -36,6 +36,7 @@ for file_name in \
     001-initial-schema.sql \
     003-unique-owner-regon.sql \
     004-translation-profiles.sql \
+    014-aed-data-rating.sql \
     005-aed-availability.sql \
     006-aed-coordinates.sql \
     007-nullable-import-data.sql \
@@ -45,6 +46,7 @@ for file_name in \
     011-required-report-photo.sql \
     012-report-placement-metadata.sql \
     013-report-rating.sql \
+    015-report-location.sql \
     002-populate-tables.sql; do
     printf 'Applying %s...\n' "$file_name"
     if ! docker compose --project-name "$project_name" exec -T mariadb sh -c \
