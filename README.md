@@ -128,10 +128,20 @@ The script uses the running Compose container and its environment credentials;
 it does not read or print passwords. Optional `-Distribution` and `-ProjectName`
 parameters select another WSL distribution or Compose project.
 
-It creates missing tables, applies `003-unique-owner-regon.sql`,
+On Linux, macOS, or inside WSL, use the Bash equivalent:
+
+```bash
+bash ./scripts/Initialize-Database.sh
+```
+
+Use `--project-name NAME` to select another Compose project (default: `aed4life`).
+The Bash script uses Docker directly and can be invoked from any working
+directory by providing its path.
+
+Both scripts create missing tables, apply `003-unique-owner-regon.sql`,
 `004-translation-profiles.sql`, `005-aed-availability.sql`,
 `006-aed-coordinates.sql`, `007-nullable-import-data.sql`, and
-`008-aed-owner.sql`, then executes
+`008-aed-owner.sql`, then execute
 `002-populate-tables.sql`.
 Each location/AED/owner sample-data table receives rows only when completely
 empty; partially populated tables are left unchanged. Sample addresses use
