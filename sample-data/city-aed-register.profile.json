@@ -1,0 +1,21 @@
+{
+  "name": "city-aed-register",
+  "transporter": {
+    "transporterUnits": [
+      { "fromColumn": "miasto",         "fromType": "STRING",  "toColumn": "Cities.Name",                "toType": "STRING"  },
+      { "fromColumn": "ulica",          "fromType": "STRING",  "toColumn": "Streets.Name",               "toType": "STRING"  },
+      { "fromColumn": "kod_pocztowy",   "fromType": "STRING",  "toColumn": "PostalCodes.Code",           "toType": "STRING"  },
+      { "fromColumn": "numer_budynku",  "fromType": "INTEGER", "toColumn": "Addresses.BuildingNumber",   "toType": "INTEGER" },
+      { "fromColumn": "wlasciciel",     "fromType": "STRING",  "toColumn": "AEDOwners.Name",             "toType": "STRING"  },
+      { "fromColumn": "regon",          "fromType": "STRING",  "toColumn": "AEDOwners.RegonNumber",      "toType": "STRING"  },
+      { "fromColumn": "czy_publiczny",  "fromType": "BOOLEAN", "toColumn": "AEDOwners.IsPublic",         "toType": "BOOLEAN" },
+      { "fromColumn": "numer_seryjny",  "fromType": "STRING",  "toColumn": "AEDs.SerialNumber",          "toType": "STRING"  },
+      { "fromColumn": "szerokosc",      "fromType": "DOUBLE",  "toColumn": "AEDs.Latitude",              "toType": "DOUBLE"  },
+      { "fromColumn": "dlugosc",        "fromType": "DOUBLE",  "toColumn": "AEDs.Longitude",             "toType": "DOUBLE"  },
+      { "fromColumn": "dostep",         "fromType": "INTEGER", "toColumn": "AEDs.Access",                "toType": "INTEGER" },
+      { "fromColumn": "godzina_od",     "fromType": "INTEGER", "toColumn": "AEDs.AvailabilityStartHour", "toType": "INTEGER" },
+      { "fromColumn": "godzina_do",     "fromType": "INTEGER", "toColumn": "AEDs.AvailabilityEndHour",   "toType": "INTEGER" },
+      { "fromColumn": "ocena",          "fromType": "INTEGER", "toColumn": "AEDs.DataRating",            "toType": "INTEGER" }
+    ]
+  }
+}
